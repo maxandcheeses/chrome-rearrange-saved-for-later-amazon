@@ -221,6 +221,87 @@ function setTableView(on, persist = true) {
   if (persist) saveSettings();
 }
 
+// Hovering an item thumbnail for IMAGE_PREVIEW_DELAY_MS pops up an enlarged
+// copy beside it. Uses delegated listeners on the document since the list,
+// tile grid and cart list are all re-rendered from scratch on every change.
+// The preview has pointer-events: none so it never steals hover from the
+// thumbnail or intercepts drags. Once a preview has been shown, moving onto
+// another thumbnail within IMAGE_PREVIEW_WARM_MS shows its preview
+// immediately, so scanning across items doesn't pay the delay every time.
+const IMAGE_PREVIEW_DELAY_MS = 500;
+const IMAGE_PREVIEW_WARM_MS = 400;
+const PREVIEW_IMG_SELECTOR = '#list img, #tileGrid img, #cartList img';
+let previewTimer = null;
+let previewTarget = null;
+let previewWarmUntil = 0;
+
+// keepWarm: leaving a thumbnail (as opposed to clicking/dragging/scrolling)
+// keeps the instant-show window open if a preview was actually visible.
+function hideImagePreview(keepWarm = false) {
+  const preview = $('imagePreview');
+  previewWarmUntil = keepWarm && preview.classList.contains('show') ? Date.now() + IMAGE_PREVIEW_WARM_MS : 0;
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  previewTarget = null;
+  preview.classList.remove('show');
+}
+
+function showImagePreview(img) {
+  // The thumbnail may have been re-rendered away while we were waiting.
+  if (!img.isConnected) { hideImagePreview(); return; }
+  const preview = $('imagePreview');
+  const previewImg = preview.querySelector('img');
+  const place = () => {
+    if (previewTarget !== img) return;
+    preview.classList.add('show');
+    const rect = img.getBoundingClientRect();
+    const pw = preview.offsetWidth;
+    const ph = preview.offsetHeight;
+    const gap = 8;
+    const margin = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // Prefer the right side of the thumbnail, then the left, then centered
+    // over it if neither side has room (e.g. the narrow compact popup).
+    let left = rect.right + gap;
+    if (left + pw > vw - margin) left = rect.left - gap - pw;
+    if (left < margin) left = rect.left + rect.width / 2 - pw / 2;
+    left = Math.max(margin, Math.min(left, vw - margin - pw));
+    const top = Math.max(margin, Math.min(rect.top + rect.height / 2 - ph / 2, vh - margin - ph));
+    preview.style.left = `${left}px`;
+    preview.style.top = `${top}px`;
+  };
+  previewImg.onload = place;
+  previewImg.src = img.currentSrc || img.src;
+  if (previewImg.complete) place();
+}
+
+function setupImagePreview() {
+  document.addEventListener('mouseover', (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.matches(PREVIEW_IMG_SELECTOR)) return;
+    if (img === previewTarget) return;
+    const warm = $('imagePreview').classList.contains('show') || Date.now() < previewWarmUntil;
+    hideImagePreview();
+    if (!img.src || img.style.visibility === 'hidden') return;
+    previewTarget = img;
+    if (warm) {
+      showImagePreview(img);
+    } else {
+      previewTimer = setTimeout(() => showImagePreview(img), IMAGE_PREVIEW_DELAY_MS);
+    }
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (e.target === previewTarget) hideImagePreview(true);
+  });
+  // Starting a drag, clicking, or scrolling should dismiss the preview right
+  // away rather than leaving it floating over a moved/scrolled thumbnail.
+  const dismiss = () => hideImagePreview();
+  document.addEventListener('mousedown', dismiss, true);
+  document.addEventListener('dragstart', dismiss, true);
+  document.addEventListener('scroll', dismiss, true);
+}
+
 function setGridMode(on) {
   gridMode = on;
   document.body.classList.toggle('grid-mode', on);
@@ -944,6 +1025,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   loadItems(true);
   setFooterMsg('💡 Try Grid view for reordering long lists faster.');
+  setupImagePreview();
 
   $('refreshBtn').addEventListener('click', () => {
     if (applyInProgress) {
