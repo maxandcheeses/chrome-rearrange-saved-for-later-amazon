@@ -27,6 +27,26 @@ let titleLinksEnabled = true;
 let defaultView = 'popup'; // 'grid' means Extended is the default — closeGridBtn closes the popup instead of returning to compact
 const TILE_SIZES = { s: { min: '110px', img: '70px' }, m: { min: '150px', img: '100px' }, l: { min: '200px', img: '140px' } };
 
+// User-defined labels ("Grocery", "Electronics"…) that can be put on items
+// and used to filter the view. An item can have any number of labels.
+// Labels don't affect ordering at all — reordering and Apply always work on
+// the full list, even while filtered. Persisted in chrome.storage.local,
+// keyed by item key (the ASIN), so they survive popup closes and reloads.
+const LABELS_STORAGE_KEY = 'sfl_labels';
+const LABEL_COLORS = 8; // see .label-c0 … .label-c7 in popup.html
+const LABEL_NAME_MAX = 40;
+let labels = []; // [{ id, name, color }]
+let labelsOf = new Map(); // item key -> Set of label ids
+let labelFilter = 'all'; // 'all' | 'none' | label id
+// Items picked with Shift+click. Dragging any of them moves them all as one
+// block (see moveKeysTo). Display-only state — never persisted.
+let selectedKeys = new Set();
+// "Show interposing items": while filtered, also show (dimmed) the
+// non-matching items sitting between the first and last match, for context
+// when reordering. Deliberately not persisted, and reset whenever the
+// filter changes — it always starts off.
+let showInBetween = false;
+
 function $(id) { return document.getElementById(id); }
 
 // Item titles are hyperlinks to the product when we know its URL (falls back
@@ -51,6 +71,9 @@ function makeTitleEl(item, key) {
     // Don't let clicking the link kick off a drag on the parent row.
     el.addEventListener('mousedown', (e) => e.stopPropagation());
     el.addEventListener('click', (e) => {
+      // Shift+click selects the row (handled by the row's own listener)
+      // rather than opening the product.
+      if (e.shiftKey) { e.preventDefault(); return; }
       e.stopPropagation();
       // A normal target="_blank" navigation opens a focused foreground tab,
       // which steals window focus and causes Chrome to auto-close this
@@ -83,13 +106,22 @@ async function getActiveTab() {
 }
 
 function renderList() {
+  renderLabelFilter();
   const listEl = $('list');
   listEl.innerHTML = '';
   order.forEach((key, idx) => {
+    const visibility = labelVisibility(key, idx);
+    if (!visibility) return;
     const item = itemsByKey.get(key);
     const li = document.createElement('li');
+    if (visibility === 'between') li.classList.add('between-item');
     li.draggable = true;
     li.dataset.key = key;
+    setupSelectable(li, key);
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openItemLabelMenu(key, e.clientX, e.clientY);
+    });
 
     const badge = document.createElement('input');
     badge.type = 'number';
@@ -124,9 +156,10 @@ function renderList() {
 
     const title = makeTitleEl(item, key);
 
-    li.append(badge, handle, img, title);
+    li.append(badge, handle, img, title, makeLabelChips(key));
     listEl.appendChild(li);
   });
+  appendFilterEmptyNote(listEl);
   attachDragHandlers();
   renderTileGrid();
 }
@@ -140,11 +173,18 @@ function renderTileGrid() {
   const gridEl = $('tileGrid');
   gridEl.innerHTML = '';
   order.forEach((key, idx) => {
+    const visibility = labelVisibility(key, idx);
+    if (!visibility) return;
     const item = itemsByKey.get(key);
     const li = document.createElement('li');
-    li.className = 'tile';
+    li.className = visibility === 'between' ? 'tile between-item' : 'tile';
     li.draggable = true;
     li.dataset.key = key;
+    setupSelectable(li, key);
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openItemLabelMenu(key, e.clientX, e.clientY);
+    });
 
     const badge = document.createElement('input');
     badge.type = 'number';
@@ -182,9 +222,10 @@ function renderTileGrid() {
     handle.className = 'handle';
     handle.textContent = '⠿';
 
-    li.append(badge, handle, imgWrap, title);
+    li.append(badge, handle, imgWrap, title, makeLabelChips(key));
     gridEl.appendChild(li);
   });
+  appendFilterEmptyNote(gridEl);
   attachTileDragHandlers();
 }
 
@@ -302,6 +343,75 @@ function setupImagePreview() {
   document.addEventListener('scroll', dismiss, true);
 }
 
+// Custom tooltips for every element with a `title`, because Chrome's native
+// tooltip delay is long and can't be configured. Shows after
+// TOOLTIP_DELAY_MS, then instantly for neighbouring elements within
+// TOOLTIP_WARM_MS (like native tooltips). Code keeps setting `.title` as
+// usual: on hover it's moved into data-tip so the native tooltip never also
+// appears, and a later `.title` write (e.g. a toggle's Show/Hide text) is
+// picked up on the next hover.
+const TOOLTIP_DELAY_MS = 1000;
+const TOOLTIP_WARM_MS = 400;
+let tooltipTimer = null;
+let tooltipTarget = null;
+let tooltipWarmUntil = 0;
+
+function tooltipText(el) {
+  if (el.hasAttribute('title')) {
+    el.dataset.tip = el.getAttribute('title');
+    el.removeAttribute('title');
+  }
+  return el.dataset.tip || '';
+}
+
+function hideTooltip(keepWarm = false) {
+  const tip = $('tooltip');
+  tooltipWarmUntil = keepWarm && tip.classList.contains('show') ? Date.now() + TOOLTIP_WARM_MS : 0;
+  clearTimeout(tooltipTimer);
+  tooltipTimer = null;
+  tooltipTarget = null;
+  tip.classList.remove('show');
+}
+
+function showTooltip(el) {
+  if (!el.isConnected || tooltipTarget !== el) { hideTooltip(); return; }
+  const tip = $('tooltip');
+  tip.textContent = tooltipText(el);
+  tip.classList.add('show');
+  // Below the element, centered; above it if there's no room below.
+  const rect = el.getBoundingClientRect();
+  const gap = 6;
+  const margin = 4;
+  let top = rect.bottom + gap;
+  if (top + tip.offsetHeight > window.innerHeight - margin) top = rect.top - gap - tip.offsetHeight;
+  const left = rect.left + rect.width / 2 - tip.offsetWidth / 2;
+  tip.style.top = `${Math.max(margin, top)}px`;
+  tip.style.left = `${Math.max(margin, Math.min(left, window.innerWidth - margin - tip.offsetWidth))}px`;
+}
+
+function setupTooltips() {
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('[title], [data-tip]');
+    if (!el || el === tooltipTarget) return;
+    const warm = $('tooltip').classList.contains('show') || Date.now() < tooltipWarmUntil;
+    hideTooltip();
+    if (!tooltipText(el)) return;
+    tooltipTarget = el;
+    if (warm) showTooltip(el);
+    else tooltipTimer = setTimeout(() => showTooltip(el), TOOLTIP_DELAY_MS);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if (!tooltipTarget || !tooltipTarget.contains(e.target)) return;
+    if (e.relatedTarget && tooltipTarget.contains(e.relatedTarget)) return;
+    hideTooltip(true);
+  });
+  const dismiss = () => hideTooltip();
+  document.addEventListener('mousedown', dismiss, true);
+  document.addEventListener('dragstart', dismiss, true);
+  document.addEventListener('scroll', dismiss, true);
+  document.addEventListener('keydown', dismiss, true);
+}
+
 function setGridMode(on) {
   gridMode = on;
   document.body.classList.toggle('grid-mode', on);
@@ -374,11 +484,566 @@ async function fetchCartItems() {
 function moveKeyToPosition(key, newPos) {
   const fromIdx = order.indexOf(key);
   if (fromIdx === -1) return;
+  const before = snapshotState();
   order.splice(fromIdx, 1);
   order.splice(newPos - 1, 0, key);
+  recordChange(before);
   renderList();
   updateApplyButton();
   persistOrder();
+}
+
+// ---- Undo / redo ----
+
+// Snapshots of the arrangement and labels, taken before each change. Lives
+// only in popup memory (gone when the popup closes) and is cleared once an
+// Apply completes, since the page's real order has moved on by then.
+const HISTORY_LIMIT = 100;
+let undoStack = [];
+let redoStack = [];
+
+function snapshotState() {
+  return {
+    order: order.slice(),
+    labels: labels.map((l) => ({ ...l })),
+    labelsOf: [...labelsOf].map(([key, ids]) => [key, [...ids]])
+  };
+}
+
+// Records `before` as an undo step if anything actually changed since it
+// was taken; a new change also discards any redo steps.
+function recordChange(before) {
+  if (JSON.stringify(before) === JSON.stringify(snapshotState())) return;
+  undoStack.push(before);
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  redoStack = [];
+  updateHistoryButtons();
+}
+
+// Restores a snapshot onto the items currently loaded: items the snapshot
+// doesn't know about (loaded since) keep their place at the end, and items
+// no longer on the page are dropped.
+function restoreState(snap) {
+  const live = new Set(order);
+  const kept = snap.order.filter((k) => live.has(k));
+  const keptSet = new Set(kept);
+  order = kept.concat(order.filter((k) => !keptSet.has(k)));
+  labels = snap.labels.map((l) => ({ ...l }));
+  labelsOf = new Map(snap.labelsOf.map(([key, ids]) => [key, new Set(ids)]));
+  commitLabelChange();
+  updateApplyButton();
+  persistOrder();
+  if (arraysEqual(order, naturalOrder)) setApplyBtnSub('');
+}
+
+function undo() {
+  if (!undoStack.length || applyInProgress) return;
+  redoStack.push(snapshotState());
+  restoreState(undoStack.pop());
+  updateHistoryButtons();
+}
+
+function redo() {
+  if (!redoStack.length || applyInProgress) return;
+  undoStack.push(snapshotState());
+  restoreState(redoStack.pop());
+  updateHistoryButtons();
+}
+
+function clearHistory() {
+  undoStack = [];
+  redoStack = [];
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  const noUndo = !undoStack.length || applyInProgress;
+  const noRedo = !redoStack.length || applyInProgress;
+  $('undoBtn').disabled = noUndo;
+  $('undoBtnModal').disabled = noUndo;
+  $('redoBtn').disabled = noRedo;
+  $('redoBtnModal').disabled = noRedo;
+}
+
+// ---- Labels ----
+
+function getLabel(id) {
+  return labels.find((l) => l.id === id);
+}
+
+function itemLabelIds(key) {
+  return labelsOf.get(key) || new Set();
+}
+
+function matchesLabelFilter(key) {
+  if (labelFilter === 'all') return true;
+  const ids = itemLabelIds(key);
+  return labelFilter === 'none' ? ids.size === 0 : ids.has(labelFilter);
+}
+
+// 'match' if the item passes the label filter, 'between' if it doesn't but
+// "Show interposing items" is on and it sits between the first and last
+// match in the full order (idx is its index in `order`), otherwise null.
+function labelVisibility(key, idx) {
+  if (matchesLabelFilter(key)) return 'match';
+  if (!showInBetween) return null;
+  const first = order.findIndex(matchesLabelFilter);
+  if (first === -1 || idx < first) return null;
+  for (let i = order.length - 1; i > idx; i--) {
+    if (matchesLabelFilter(order[i])) return 'between';
+  }
+  return null;
+}
+
+function loadLabels() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(LABELS_STORAGE_KEY, (res) => {
+      const saved = res[LABELS_STORAGE_KEY] || {};
+      labels = Array.isArray(saved.labels) ? saved.labels : [];
+      labelsOf = new Map();
+      Object.entries(saved.items || {}).forEach(([key, ids]) => {
+        const valid = (ids || []).filter((id) => getLabel(id));
+        if (valid.length) labelsOf.set(key, new Set(valid));
+      });
+      resolve();
+    });
+  });
+}
+
+function saveLabels() {
+  const items = {};
+  labelsOf.forEach((ids, key) => { if (ids.size) items[key] = [...ids]; });
+  chrome.storage.local.set({ [LABELS_STORAGE_KEY]: { labels, items } });
+}
+
+// Common tail for anything that changes labels: persist, then refresh the
+// filter controls (names/counts) and both views.
+function commitLabelChange() {
+  if (labelFilter !== 'all' && labelFilter !== 'none' && !getLabel(labelFilter)) {
+    labelFilter = 'all';
+    showInBetween = false;
+  }
+  saveLabels();
+  renderList();
+}
+
+function createLabel(name, forKey) {
+  const before = snapshotState();
+  const id = `l${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  // Reuse the least-used color so neighbouring labels stay distinguishable.
+  const used = labels.map((l) => l.color);
+  let color = 0;
+  for (let c = 0; c < LABEL_COLORS; c++) {
+    if (used.filter((u) => u === c).length < used.filter((u) => u === color).length) color = c;
+  }
+  labels.push({ id, name, color });
+  if (forKey) setItemLabel(forKey, id, true);
+  recordChange(before);
+  commitLabelChange();
+}
+
+function setItemLabel(key, id, on) {
+  const ids = new Set(itemLabelIds(key));
+  if (on) ids.add(id); else ids.delete(id);
+  if (ids.size) labelsOf.set(key, ids); else labelsOf.delete(key);
+}
+
+function toggleItemLabel(key, id) {
+  const before = snapshotState();
+  setItemLabel(key, id, !itemLabelIds(key).has(id));
+  recordChange(before);
+  commitLabelChange();
+}
+
+// Moves a label before/after another in the label list. The order is what
+// the filter dropdown, the right-click menu and item chips follow.
+function moveLabel(id, targetId, position) {
+  if (id === targetId) return;
+  const before = snapshotState();
+  const moving = getLabel(id);
+  if (!moving || !getLabel(targetId)) return;
+  labels = labels.filter((l) => l !== moving);
+  const idx = labels.findIndex((l) => l.id === targetId);
+  labels.splice(position === 'after' ? idx + 1 : idx, 0, moving);
+  recordChange(before);
+  commitLabelChange();
+}
+
+function renameLabel(id, name) {
+  const label = getLabel(id);
+  if (!label) return;
+  const before = snapshotState();
+  label.name = name;
+  recordChange(before);
+  commitLabelChange();
+}
+
+// Deletes a label. With targetId, every item that had it gets that label
+// instead; otherwise the label is just removed from them. Item positions
+// never change either way.
+function deleteLabel(id, targetId) {
+  const before = snapshotState();
+  labelsOf.forEach((ids, key) => {
+    if (!ids.has(id)) return;
+    setItemLabel(key, id, false);
+    if (getLabel(targetId)) setItemLabel(key, targetId, true);
+  });
+  labels = labels.filter((l) => l.id !== id);
+  recordChange(before);
+  commitLabelChange();
+}
+
+function labelCount(id) {
+  return order.filter((k) => itemLabelIds(k).has(id)).length;
+}
+
+function makeLabelChips(key) {
+  const wrap = document.createElement('span');
+  wrap.className = 'label-chips';
+  labels.forEach((label) => {
+    if (!itemLabelIds(key).has(label.id)) return;
+    const chip = document.createElement('span');
+    chip.className = `label-chip label-c${label.color}`;
+    chip.textContent = label.name;
+    chip.title = label.name;
+    wrap.appendChild(chip);
+  });
+  return wrap;
+}
+
+function appendFilterEmptyNote(container) {
+  if (labelFilter === 'all' || !order.length || order.some(matchesLabelFilter)) return;
+  const li = document.createElement('li');
+  li.className = 'filter-empty';
+  li.textContent = labelFilter === 'none' ? 'Every item has a label.' : 'No items have this label yet. Right-click an item to add it.';
+  container.appendChild(li);
+}
+
+// Value of the "Edit labels…" entry at the bottom of the filter dropdowns.
+// It's an action, not a filter: picking it opens the label editor and the
+// dropdown snaps back to the current filter.
+const EDIT_LABELS_OPTION = '__edit';
+
+// Fills both filter dropdowns (compact + grid) and updates the interposing
+// items toggle.
+function renderLabelFilter() {
+  ['labelFilter', 'labelFilterModal'].forEach((id) => {
+    const select = $(id);
+    select.innerHTML = '';
+    const add = (value, text) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      select.appendChild(opt);
+    };
+    add('all', `All items (${order.length})`);
+    labels.forEach((l) => add(l.id, `${l.name} (${labelCount(l.id)})`));
+    if (labels.length) {
+      add('none', `No label (${order.filter((k) => itemLabelIds(k).size === 0).length})`);
+      const sep = document.createElement('option');
+      sep.disabled = true;
+      sep.textContent = '──────────';
+      select.appendChild(sep);
+      add(EDIT_LABELS_OPTION, '✎ Edit labels…');
+    }
+    select.value = labelFilter;
+  });
+  ['inBetweenBtn', 'inBetweenBtnModal'].forEach((id) => {
+    const btn = $(id);
+    btn.style.display = labelFilter === 'all' ? 'none' : '';
+    btn.classList.toggle('active', showInBetween);
+    btn.setAttribute('aria-pressed', String(showInBetween));
+    const text = `${showInBetween ? 'Hide' : 'Show'} interposing items`;
+    btn.title = text;
+    btn.setAttribute('aria-label', text);
+  });
+}
+
+function setLabelFilter(value) {
+  labelFilter = value;
+  showInBetween = false;
+  // A hidden item staying selected would get dragged along unseen.
+  selectedKeys.clear();
+  renderList();
+}
+
+// ---- Context menu ----
+
+function closeContextMenu() {
+  $('ctxMenu').classList.remove('show');
+}
+
+// entries: [{ label, onClick, danger }] | { heading } | 'sep'
+function openContextMenu(entries, x, y) {
+  const menu = $('ctxMenu');
+  menu.innerHTML = '';
+  entries.forEach((entry) => {
+    if (entry === 'sep') {
+      menu.appendChild(document.createElement('hr'));
+    } else if (entry.heading) {
+      const el = document.createElement('div');
+      el.className = 'ctx-heading';
+      const text = document.createElement('span');
+      text.textContent = entry.heading;
+      el.appendChild(text);
+      if (entry.closable) {
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'ctx-close';
+        close.textContent = '✕';
+        close.title = 'Close';
+        close.addEventListener('click', closeContextMenu);
+        el.appendChild(close);
+      }
+      menu.appendChild(el);
+    } else {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = entry.label;
+      btn.title = entry.label;
+      if (entry.danger) btn.classList.add('danger');
+      // keepOpen entries (label toggles) leave the menu up so several can
+      // be ticked in a row; their onClick re-opens it to refresh the ✓s.
+      btn.addEventListener('click', () => {
+        if (!entry.keepOpen) closeContextMenu();
+        entry.onClick();
+      });
+      menu.appendChild(btn);
+    }
+  });
+  menu.classList.add('show');
+  const margin = 4;
+  const left = Math.max(margin, Math.min(x, window.innerWidth - menu.offsetWidth - margin));
+  const top = Math.max(margin, Math.min(y, window.innerHeight - menu.offsetHeight - margin));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function openItemLabelMenu(key, x, y) {
+  if (applyInProgress) return;
+  const current = itemLabelIds(key);
+  const entries = [{ heading: 'Labels', closable: true }];
+  labels.forEach((l) => {
+    entries.push({
+      label: `${current.has(l.id) ? '✓' : ' '} ${l.name}`,
+      keepOpen: true,
+      onClick: () => {
+        toggleItemLabel(key, l.id);
+        openItemLabelMenu(key, x, y);
+      }
+    });
+  });
+  if (labels.length) entries.push('sep');
+  entries.push({ label: '＋ New label…', onClick: () => promptLabelName('New label', '', (name) => createLabel(name, key)) });
+  openContextMenu(entries, x, y);
+}
+
+function onLabelFilterChange(select) {
+  if (select.value === EDIT_LABELS_OPTION) {
+    select.value = labelFilter;
+    openLabelEditor();
+    return;
+  }
+  setLabelFilter(select.value);
+}
+
+// ---- Dialogs ----
+
+function closeDialog() {
+  // Blur first so a field edited in place (e.g. a label name in the editor)
+  // fires its change handler and is saved, whichever way the dialog closes.
+  if ($('dialog').contains(document.activeElement)) document.activeElement.blur();
+  $('dialog').classList.remove('show');
+  $('dialogBackdrop').classList.remove('show');
+  document.body.classList.remove('dialog-open');
+}
+
+// actions: [{ label, primary, danger, onClick }] — onClick returning false
+// keeps the dialog open (e.g. for validation). `closable` adds a ✕ in the
+// header for dialogs that are browsed rather than answered.
+function openDialog(title, bodyNodes, actions, { closable = false } = {}) {
+  closeContextMenu();
+  $('dialogTitle').textContent = title;
+  $('dialogCloseBtn').style.display = closable ? '' : 'none';
+  $('dialogBody').replaceChildren(...bodyNodes);
+  const actionsEl = $('dialogActions');
+  actionsEl.innerHTML = '';
+  actions.forEach((action) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = action.label;
+    if (action.primary) btn.classList.add('primary');
+    if (action.danger) btn.classList.add('danger');
+    btn.addEventListener('click', () => {
+      if (action.onClick && action.onClick() === false) return;
+      closeDialog();
+    });
+    actionsEl.appendChild(btn);
+  });
+  document.body.classList.add('dialog-open');
+  $('dialogBackdrop').classList.add('show');
+  $('dialog').classList.add('show');
+}
+
+function promptLabelName(title, initial, onSave) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = LABEL_NAME_MAX;
+  input.placeholder = 'e.g. Grocery, Recurring, Electronics';
+  input.value = initial;
+  const submit = () => {
+    const name = input.value.trim();
+    if (!name) { input.focus(); return false; }
+    onSave(name);
+    return true;
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && submit()) closeDialog();
+  });
+  openDialog(title, [input], [
+    { label: 'Cancel' },
+    { label: 'Save', primary: true, onClick: submit }
+  ]);
+  input.focus();
+  input.select();
+}
+
+const TRASH_ICON_PATH = 'M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z'; // "delete-outline" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0)
+
+// Lists every label with its name editable in place (applied on Enter or
+// when the field loses focus, so each rename is its own undo step), its item
+// count, and a delete button that goes through confirmDeleteLabel and then
+// comes back here. Rows can be dragged by their ⠿ handle to reorder labels.
+function openLabelEditor() {
+  closeContextMenu();
+  const list = document.createElement('div');
+  list.className = 'label-editor';
+  if (!labels.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = 'No labels yet. Right-click an item or use “＋ Label” to create one.';
+    list.appendChild(empty);
+  }
+  labels.forEach((label) => {
+    const row = document.createElement('div');
+    row.className = 'label-editor-row';
+    row.dataset.id = label.id;
+    attachLabelRowDrag(row, list);
+
+    const handle = document.createElement('span');
+    handle.className = 'label-editor-handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to reorder';
+    // Rows are only draggable while grabbed by the handle, so dragging in
+    // the name field still selects text as usual.
+    handle.addEventListener('mousedown', () => { row.draggable = true; });
+    row.addEventListener('mouseup', () => { row.draggable = false; });
+
+    const swatch = document.createElement('span');
+    swatch.className = `label-swatch label-c${label.color}`;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = LABEL_NAME_MAX;
+    input.value = label.name;
+    input.setAttribute('aria-label', `Name of label “${label.name}”`);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+    input.addEventListener('change', () => {
+      const name = input.value.trim();
+      if (!name || name === label.name) { input.value = label.name; return; }
+      renameLabel(label.id, name);
+    });
+
+    const count = document.createElement('span');
+    count.className = 'label-editor-count';
+    const n = labelCount(label.id);
+    count.textContent = `${n} item${n === 1 ? '' : 's'}`;
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'label-editor-delete';
+    del.title = `Delete “${label.name}”`;
+    del.setAttribute('aria-label', `Delete “${label.name}”`);
+    del.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${TRASH_ICON_PATH}"/></svg>`;
+    del.addEventListener('click', () => confirmDeleteLabel(label.id, openLabelEditor));
+
+    row.append(handle, swatch, input, count, del);
+    list.appendChild(row);
+  });
+  openDialog('Edit labels', [list], [{ label: 'Done', primary: true }], { closable: true });
+}
+
+function attachLabelRowDrag(row, list) {
+  const clear = () => list.querySelectorAll('.label-editor-row').forEach((r) => {
+    r.classList.remove('drag-over-before', 'drag-over-after');
+  });
+  row.addEventListener('dragstart', (e) => {
+    list.dataset.dragging = row.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    row.classList.add('drag-source');
+  });
+  row.addEventListener('dragend', () => {
+    row.draggable = false;
+    row.classList.remove('drag-source');
+    delete list.dataset.dragging;
+    clear();
+  });
+  row.addEventListener('dragover', (e) => {
+    if (!list.dataset.dragging) return;
+    e.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const before = e.clientY - rect.top < rect.height / 2;
+    clear();
+    row.classList.add(before ? 'drag-over-before' : 'drag-over-after');
+    row.dataset.dropPosition = before ? 'before' : 'after';
+  });
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const id = list.dataset.dragging;
+    clear();
+    if (!id) return;
+    moveLabel(id, row.dataset.id, row.dataset.dropPosition || 'before');
+    openLabelEditor();
+  });
+}
+
+// onDone: when given (e.g. from the label editor), called after Cancel or
+// Delete instead of just closing, so the user lands back where they were.
+function confirmDeleteLabel(id, onDone) {
+  const label = getLabel(id);
+  if (!label) return;
+  const count = labelCount(id);
+  const others = labels.filter((l) => l.id !== id);
+  const text = document.createElement('p');
+  const body = [text];
+  let select = null;
+  if (count === 0) {
+    text.textContent = `Delete the label “${label.name}”? No items have it.`;
+  } else {
+    text.textContent = `${count} item${count === 1 ? ' has' : 's have'} the label “${label.name}”. Their positions won't change.`;
+    if (others.length) {
+      select = document.createElement('select');
+      const keep = document.createElement('option');
+      keep.value = '';
+      keep.textContent = 'Just remove the label from them';
+      select.appendChild(keep);
+      others.forEach((l) => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = `Move them to “${l.name}”`;
+        select.appendChild(opt);
+      });
+      body.push(select);
+    }
+  }
+  // Returning false keeps the dialog open, since onDone re-fills it.
+  const finish = () => (onDone ? (onDone(), false) : true);
+  openDialog('Delete label', body, [
+    { label: 'Cancel', onClick: finish },
+    { label: 'Delete', danger: true, onClick: () => { deleteLabel(id, select ? select.value : null); return finish(); } }
+  ]);
 }
 
 // Saves the current manual arrangement in the content script's memory so
@@ -448,7 +1113,9 @@ function updateApplyButton() {
 // Reverts to the order items actually appear in on the Amazon page,
 // discarding any pending manual arrangement.
 function resetOrder() {
+  const before = snapshotState();
   order = naturalOrder.slice();
+  recordChange(before);
   if (activeTabId) {
     sendToTab(activeTabId, { type: 'SFL_SET_PENDING_ORDER', order: null }).catch(() => {});
   }
@@ -494,6 +1161,69 @@ function autoScrollContainerOnDragover(container, clientY) {
   }
 }
 
+// ---- Multi-select (Shift+click) ----
+
+function setupSelectable(li, key) {
+  if (selectedKeys.has(key)) li.classList.add('selected');
+  li.addEventListener('click', (e) => {
+    if (e.target.closest('input, button')) return;
+    if (e.shiftKey) toggleSelected(key);
+    else if (selectedKeys.size) clearSelection();
+  });
+}
+
+function toggleSelected(key) {
+  if (selectedKeys.has(key)) selectedKeys.delete(key);
+  else selectedKeys.add(key);
+  renderSelection();
+}
+
+function clearSelection() {
+  if (!selectedKeys.size) return;
+  selectedKeys.clear();
+  renderSelection();
+}
+
+// Updates highlight classes in both views without a full re-render.
+function renderSelection() {
+  document.querySelectorAll('#list li[data-key], #tileGrid li[data-key]').forEach((li) => {
+    li.classList.toggle('selected', selectedKeys.has(li.dataset.key));
+  });
+}
+
+// The keys a drag starting on `key` should move: the whole selection (in
+// current top-to-bottom order) if `key` is part of a multi-selection,
+// otherwise just `key`.
+function keysToDrag(key) {
+  if (!selectedKeys.has(key) || selectedKeys.size < 2) return [key];
+  return order.filter((k) => selectedKeys.has(k));
+}
+
+// Moves `keys` (already in their relative order) to sit as one contiguous
+// block before/after `targetKey`. If the target is itself one of the moving
+// keys, the block closes up at the target's current spot. Returns false if
+// nothing changed.
+function moveKeysTo(keys, targetKey, position) {
+  const moving = new Set(keys);
+  const targetIdx = order.indexOf(targetKey);
+  if (targetIdx === -1) return false;
+  let insertAt = order.slice(0, targetIdx).filter((k) => !moving.has(k)).length;
+  if (position === 'after' && !moving.has(targetKey)) insertAt += 1;
+  const rest = order.filter((k) => !moving.has(k));
+  rest.splice(insertAt, 0, ...keys);
+  if (arraysEqual(rest, order)) return false;
+  order = rest;
+  return true;
+}
+
+// Replaces the browser's default drag ghost (just the grabbed row) with a
+// small "Moving N items" pill so it's clear the whole selection is coming.
+function setMultiDragImage(e, count) {
+  const ghost = $('dragGhost');
+  ghost.textContent = `Moving ${count} items`;
+  e.dataTransfer.setDragImage(ghost, 12, 12);
+}
+
 // Shared drag-to-reorder wiring for both the plain list and the tile grid.
 // `axis` picks whether the before/after split (and therefore the drop-line
 // indicator) is judged along the vertical or horizontal midpoint of the
@@ -530,16 +1260,24 @@ function attachReorderDragHandlers(container, itemSelector, axis) {
   }
 
   container.querySelectorAll(itemSelector).forEach((item) => {
-    item.addEventListener('dragstart', () => {
+    item.addEventListener('dragstart', (e) => {
       dragSourceKey = item.dataset.key;
       dropTargetKey = null;
       cancelled = false;
       item.classList.add('drag-source');
+      // Dragging a selected item carries the whole selection along.
+      const moving = keysToDrag(dragSourceKey);
+      if (moving.length > 1) {
+        container.querySelectorAll(itemSelector).forEach((el) => {
+          if (selectedKeys.has(el.dataset.key)) el.classList.add('drag-source');
+        });
+        setMultiDragImage(e, moving.length);
+      }
       document.addEventListener('keydown', onKeyDown);
       rafHandle = requestAnimationFrame(autoScrollTick);
     });
     item.addEventListener('dragend', () => {
-      item.classList.remove('drag-source');
+      container.querySelectorAll('.drag-source').forEach((el) => el.classList.remove('drag-source'));
       clearIndicators();
       dragSourceKey = null;
       lastClientY = null;
@@ -566,13 +1304,12 @@ function attachReorderDragHandlers(container, itemSelector, axis) {
     item.addEventListener('drop', (e) => {
       e.preventDefault();
       clearIndicators();
-      if (cancelled || !dragSourceKey || dragSourceKey === dropTargetKey) return;
-      const fromIdx = order.indexOf(dragSourceKey);
-      let toIdx = order.indexOf(dropTargetKey);
-      if (fromIdx === -1 || toIdx === -1) return;
-      order.splice(fromIdx, 1);
-      toIdx = order.indexOf(dropTargetKey);
-      order.splice(dropPosition === 'after' ? toIdx + 1 : toIdx, 0, dragSourceKey);
+      if (cancelled || !dragSourceKey || !dropTargetKey) return;
+      const moving = keysToDrag(dragSourceKey);
+      if (moving.length === 1 && dragSourceKey === dropTargetKey) return;
+      const before = snapshotState();
+      if (!moveKeysTo(moving, dropTargetKey, dropPosition)) return;
+      recordChange(before);
       renderList();
       updateApplyButton();
       persistOrder();
@@ -636,6 +1373,7 @@ function mergeItems(items) {
   items.forEach((i) => itemsByKey.set(i.key, i));
 
   order = order.filter((k) => liveSet.has(k));
+  selectedKeys.forEach((k) => { if (!liveSet.has(k)) selectedKeys.delete(k); });
   const knownSet = new Set(order);
   const newKeys = liveKeys.filter((k) => !knownSet.has(k));
   order = order.concat(newKeys);
@@ -675,7 +1413,7 @@ function startWatching(tabId) {
     if (loadingAll) {
       setMsg(`Scrolling to load all saved items… ${order.length} found so far.`, false, true);
     } else {
-      setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, then Apply.`);
+      setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, right-click to label, then Apply.`);
       setIncompleteBanner(!!(snap && snap.mayBeIncomplete));
     }
     updateApplyButton();
@@ -792,7 +1530,7 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
     return;
   }
 
-  setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, then Apply.`);
+  setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, right-click to label, then Apply.`);
   setIncompleteBanner(!!(res && res.mayBeIncomplete));
   renderList();
   updateResetButton();
@@ -825,6 +1563,9 @@ function setControlsDisabled(disabled) {
   $('settingsBtn').disabled = disabled;
   $('settingsBtnModal').disabled = disabled;
   $('gridViewBtn').disabled = disabled;
+  ['addLabelBtn', 'addLabelBtnModal', 'labelFilter', 'labelFilterModal', 'inBetweenBtn', 'inBetweenBtnModal']
+    .forEach((id) => { $(id).disabled = disabled; });
+  if (disabled) { closeContextMenu(); closeDialog(); }
   $('loadAllBtnInline').disabled = disabled;
   $('loadAllBtnModal').disabled = disabled;
   $('list').classList.toggle('disabled', disabled);
@@ -837,6 +1578,7 @@ function setControlsDisabled(disabled) {
   } else {
     updateResetButton();
   }
+  updateHistoryButtons();
 }
 
 // Swaps refreshBtn between its normal "Refresh" behavior and a "Cancel"
@@ -920,6 +1662,7 @@ function pollStatus() {
         setApplyBtnSub('');
         order = [];
         naturalOrder = [];
+        clearHistory();
         updateApplyButton();
         setControlsDisabled(false);
         setRefreshBtnMode(false);
@@ -969,6 +1712,7 @@ function pollStatus() {
       // order/naturalOrder in sync (avoids a stale nonzero apply estimate).
       order = [];
       naturalOrder = [];
+      clearHistory();
       // The content script already cleared its pending order as soon as
       // SFL_APPLY_ORDER was sent — the applied order is now the page's
       // real order.
@@ -1004,9 +1748,13 @@ function saveSettings() {
     tableView
   };
   chrome.storage.local.set({ [STORAGE_KEY]: s });
+  // Only switch views when the Default view setting itself changed — every
+  // other save (zoom, table view, delay…) must leave the current view alone,
+  // or e.g. toggling table view inside the grid would drop back to compact.
+  const defaultViewChanged = s.defaultView !== defaultView;
   defaultView = s.defaultView;
   $('closeGridBtn').title = defaultView === 'grid' ? 'Close popup' : 'Close grid view';
-  setGridMode(s.defaultView === 'grid');
+  if (defaultViewChanged) setGridMode(defaultView === 'grid');
   renderList();
   renderCartList();
 }
@@ -1023,9 +1771,11 @@ document.addEventListener('DOMContentLoaded', () => {
   loadSettings((s) => {
     if (s.defaultView === 'grid') setGridMode(true);
   });
+  loadLabels().then(renderList);
   loadItems(true);
   setFooterMsg('💡 Try Grid view for reordering long lists faster.');
   setupImagePreview();
+  setupTooltips();
 
   $('refreshBtn').addEventListener('click', () => {
     if (applyInProgress) {
@@ -1048,6 +1798,22 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => applyTileSize(btn.dataset.size));
   });
   $('applyBtn').addEventListener('click', applyOrder);
+  $('undoBtn').addEventListener('click', undo);
+  $('redoBtn').addEventListener('click', redo);
+  $('undoBtnModal').addEventListener('click', undo);
+  $('redoBtnModal').addEventListener('click', redo);
+  // ⌘Z / Ctrl+Z undo; ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y redo. Left alone while
+  // typing in a field (where they mean text undo) or with a dialog open.
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.target.closest('input, select, textarea') || $('dialog').classList.contains('show')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+  });
+  const mod = /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  ['undoBtn', 'undoBtnModal'].forEach((id) => { $(id).title = `Undo (${mod}Z)`; });
+  ['redoBtn', 'redoBtnModal'].forEach((id) => { $(id).title = mod === '⌘' ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Y)'; });
   $('resetBtn').addEventListener('click', resetOrder);
   $('applyBtnModal').addEventListener('click', applyOrder);
   $('resetBtnModal').addEventListener('click', resetOrder);
@@ -1055,6 +1821,29 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settingsBtnModal').addEventListener('click', () => toggleSettingsPanel());
   $('settingsBackdrop').addEventListener('click', () => toggleSettingsPanel(false));
   $('closeSettingsBtn').addEventListener('click', () => toggleSettingsPanel(false));
+  const addLabel = () => promptLabelName('New label', '', (name) => createLabel(name));
+  $('addLabelBtn').addEventListener('click', addLabel);
+  $('addLabelBtnModal').addEventListener('click', addLabel);
+  $('labelFilter').addEventListener('change', (e) => onLabelFilterChange(e.target));
+  $('labelFilterModal').addEventListener('change', (e) => onLabelFilterChange(e.target));
+  const toggleInBetween = () => { showInBetween = !showInBetween; renderList(); };
+  $('inBetweenBtn').addEventListener('click', toggleInBetween);
+  $('inBetweenBtnModal').addEventListener('click', toggleInBetween);
+  $('dialogBackdrop').addEventListener('click', closeDialog);
+  $('dialogCloseBtn').addEventListener('click', closeDialog);
+  // A click elsewhere or Escape dismisses the context menu (as does its ✕).
+  // Deliberately not scrolling: ticking a label re-renders the list, which
+  // fires scroll events and would close the menu mid-way through labeling.
+  document.addEventListener('mousedown', (e) => {
+    if (!$('ctxMenu').contains(e.target)) closeContextMenu();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const overlayOpen = $('ctxMenu').classList.contains('show') || $('dialog').classList.contains('show');
+    closeContextMenu();
+    closeDialog();
+    if (!overlayOpen) clearSelection();
+  });
   $('delay').addEventListener('change', saveSettings);
   $('reloadAfterApply').addEventListener('change', saveSettings);
   $('defaultView').addEventListener('change', saveSettings);

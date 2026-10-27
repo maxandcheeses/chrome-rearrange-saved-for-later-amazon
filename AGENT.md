@@ -8,13 +8,22 @@ place.
 
 No data is collected, stored remotely, or transmitted anywhere — all state
 lives in the popup's memory, the content script's in-page memory, and
-`chrome.storage.local` (extension settings only).
+`chrome.storage.local` (extension settings, plus user-defined item labels).
 
 ## Architecture
 
 - `manifest.json` — MV3 manifest. Content script is injected on all Amazon
   storefront domains listed under `content_scripts.matches`. Popup is
-  `popup.html` (no background service worker).
+  `popup.html`.
+- `background.js` — minimal service worker whose only job is greying out
+  the toolbar icon off Amazon cart pages: the action is disabled by
+  default, disabled again per tab whenever it starts loading (per-tab state
+  otherwise survives navigation), and enabled per tab when the content
+  script confirms a cart page — either by answering an `SFL_PING` sent on
+  load `complete`, or by sending `SFL_PAGE_SUPPORTED` itself (it retries
+  for ~15s, since the saved section can render late). Must be listed in
+  the zip step of `.github/workflows/build.yml` along with the other
+  runtime files.
 - `popup.html` / `popup.js` — the toolbar popup UI. Renders the saved-item
   list, handles drag-and-drop and numeric-position reordering, polls the
   content script for live item snapshots and apply-progress, and stores
@@ -43,6 +52,33 @@ lives in the popup's memory, the content script's in-page memory, and
   reloads after completing), clears the UI back to normal, and retries
   loading items after a short delay to let the reloaded page's content
   script re-inject.
+- Labels (`popup.js`, "Labels" section) — user-defined tags ("Grocery",
+  "Electronics"…) applied via right-click on an item, with a filter
+  dropdown in both views. An item can have several labels. Labels never
+  affect ordering: drag/typed-position reordering while filtered still
+  moves items within the full `order`, badges keep showing real positions,
+  and Apply always applies the full list. Stored in `chrome.storage.local`
+  under `sfl_labels` as `{ labels: [{id, name, color}], items: {key: [ids]} }`
+  — keyed by item key (the ASIN), so labels follow items across sessions.
+  Deliberately chrome.storage rather than content-script memory like
+  `pendingOrder`: labels are user-curated data meant to persist, not a
+  transient pending action. "Show interposing items" (the toggle next to
+  the filter) additionally shows, dimmed, the non-matching items between
+  the first and last match; it's display-only and resets whenever the
+  filter changes.
+- Undo/redo (`popup.js`, "Undo / redo" section) — snapshots of the
+  arrangement and labels taken before each change (`recordChange`), bound
+  to the toolbar buttons and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y
+  (ignored while typing in a field or with a dialog open). Popup memory
+  only, and cleared after a successful Apply since the page's real order
+  has moved on. `restoreState` reconciles against the items currently
+  loaded: unknown items keep their place at the end, vanished ones drop.
+- Multi-select (`popup.js`, "Multi-select" section) — Shift+click toggles
+  items into a selection; dragging any selected item moves the whole
+  selection as one block. Display-only, never persisted, and pruned when
+  the label filter hides selected items.
+- Custom tooltips (`setupTooltips`) replace Chrome's slow native ones for
+  every element with a `title`; code keeps setting `.title` as usual.
 - `content.js` — injected into the Amazon cart page. Scans the DOM for
   saved-for-later rows (`scanItems`), optionally auto-scrolls to force lazy
   loading of the full list (`autoScrollToLoadAll`), computes a bump plan to

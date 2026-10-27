@@ -744,5 +744,22 @@
     }
   });
 
+  // Lets the background worker enable the toolbar icon for this tab. The
+  // "Saved for later" section can render well after document_idle, so keep
+  // re-checking for a while before giving up (the icon stays greyed out).
+  const PAGE_SUPPORT_RETRY_MS = 1000;
+  const PAGE_SUPPORT_MAX_TRIES = 15;
+
+  function reportPageSupport(tries = 0) {
+    if (looksLikeCartPage()) {
+      chrome.runtime.sendMessage({ type: 'SFL_PAGE_SUPPORTED' }).catch(() => {});
+      return;
+    }
+    if (tries + 1 < PAGE_SUPPORT_MAX_TRIES) {
+      setTimeout(() => reportPageSupport(tries + 1), PAGE_SUPPORT_RETRY_MS);
+    }
+  }
+
   loadSettings();
+  reportPageSupport();
 })();

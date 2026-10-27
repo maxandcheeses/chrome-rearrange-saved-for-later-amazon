@@ -28,6 +28,7 @@ jobs:
           mkdir -p dist
           zip -r "dist/chrome-reorder-saved-for-later-amazon-${{ steps.version.outputs.version }}.zip" \
             manifest.json \
+            background.js \
             popup.html \
             popup.js \
             content.js \

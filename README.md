@@ -44,6 +44,25 @@ cart" / "Save for later" controls to bump items into the position you want.
    reopening the popup restores it. Reloading/navigating/closing the tab
    resets it back to the page's real order, and the **Reset** button lets
    you do that manually too.
+7. Use the undo/redo buttons (or ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y) to step
+   back and forth through your changes before applying.
+8. Shift+click several items to select them, then drag any one of them to
+   move the whole group together.
+
+The toolbar icon is greyed out except on Amazon cart pages, where the
+extension can actually do something.
+
+## Labels
+
+Right-click an item to tag it with labels like "Grocery" or "Electronics"
+(click **＋ Label** to create one). An item can have several labels. Use the
+filter dropdown to show only items with a given label — reordering while
+filtered still moves items within your full list, and **Apply order**
+always applies the whole list. Turn on "Show interposing items" to also
+see, dimmed, the unlabeled items sitting between your filtered ones.
+Pick **Edit labels…** in the dropdown to rename, reorder, or delete
+labels. Labels are saved locally in your browser and stick to items
+across sessions.
 
 ## Settings
 
