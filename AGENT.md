@@ -134,7 +134,14 @@ Chrome sync account. Keep any privacy wording consistent with that.
   order). Communicates with `popup.js` over `chrome.runtime.onMessage`
   using message types prefixed `SFL_*` (`SFL_PING`, `SFL_GET_ITEMS`,
   `SFL_GET_LOAD_STATUS`, `SFL_GET_STATUS`, `SFL_APPLY_ORDER`,
-  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`).
+  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`, `SFL_DELETE_ITEM`).
+  `SFL_DELETE_ITEM` (from the item right-click menu, `openItemMenu` in
+  `popup.js`) clicks Amazon's "Delete" control on a saved row
+  (`isDeleteElement` — matches whole control text, not substrings, since
+  short phrases like "sil" appear in product titles) and waits for the
+  row to vanish. It's permanent on Amazon, so it's confirmed first and
+  sits outside undo/redo; the popup just rescans and `mergeItems` drops
+  the key.
 - `content.css` — minimal styling injected alongside the content script.
 - `icons/` — extension icons at 16/32/48/128px, generated from a single
   source image via `sips`. Regenerate all four sizes together if the icon

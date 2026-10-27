@@ -62,6 +62,11 @@ filter dropdown to show only items with a given label — reordering while
 filtered still moves items within your full list, and **Apply order**
 always applies the whole list. Turn on "Show interposing items" to also
 see, dimmed, the unlabeled items sitting between your filtered ones.
+
+The same right-click menu has **Delete from Saved for later…**, which
+removes the item from your list on Amazon (after a confirmation) by
+clicking Amazon's own "Delete" link. This is permanent and can't be undone
+from the popup.
 Pick **Edit labels…** in the dropdown to rename, recolor, reorder, or delete
 labels — click **Done** to save your edits, or close the editor (✕, click
 outside, or Escape) to discard them. Labels are saved locally in your browser and stick to items

@@ -63,6 +63,13 @@
     'daha sonra almak için kaydet', 'spara till senare', '稍后再买', '之後再買', 'الحفظ لوقت لاحق'
   ];
 
+  // Matched against a control's whole visible text (not a substring), since
+  // short words like "sil" or "delete" also turn up inside product titles.
+  const DELETE_PHRASES = [
+    'delete', 'löschen', 'loschen', 'supprimer', 'eliminar', 'elimina', 'rimuovi', 'excluir',
+    'verwijderen', '削除', 'usuń', 'usun', 'sil', 'ta bort', '删除', '刪除', 'حذف'
+  ];
+
   const SAVED_FOR_LATER_HEADING_PHRASES = [
     'saved for later', 'für später gespeichert', 'fur spater gespeichert',
     'enregistré pour plus tard', 'enregistre pour plus tard', 'guardado para más tarde',
@@ -97,6 +104,13 @@
     const text = elementLabelText(el);
     if (/save.?for.?later|saveforlater/.test(text)) return true;
     return SAVE_FOR_LATER_PHRASES.some((p) => text.includes(p.toLowerCase()));
+  }
+
+  function isDeleteElement(el) {
+    if (el.matches('a[href*="/dp/"], a[href*="/gp/product/"]') || isMoveToCartElement(el)) return false;
+    if (/submit\.delete|(^|[\s._-])delete($|[\s._-])/.test(attrsText(el))) return true;
+    const text = (el.textContent || el.value || '').trim().toLowerCase();
+    return DELETE_PHRASES.includes(text);
   }
 
   function loadSettings() {
@@ -331,6 +345,28 @@
 
     if (!reappeared) {
       throw new Error(`Clicked "Save for later" for "${entry.titleText}" but it never showed up in Saved for later.`);
+    }
+  }
+
+  // Removes one item from "Saved for later" entirely by clicking its
+  // "Delete" control, then waits for its row to disappear.
+  async function deleteSavedItem(key) {
+    const asin = /^[A-Z0-9]{10}$/.test(key) ? key : null;
+    scanItems(); // refresh row elements, which Amazon may have re-rendered
+    const entry = itemsByKey.get(key);
+    if (!entry) throw new Error(`Item ${key} no longer on page`);
+
+    const deleteLink = findActionLink(entry.rowEl, isDeleteElement);
+    if (!deleteLink) throw new Error(`Could not find "Delete" for ${entry.titleText}`);
+    robustClick(deleteLink);
+
+    const gone = await waitForCondition(() => {
+      const rows = getAllSavedRows();
+      return !rows.some((r) => (asin ? extractAsin(r) === asin : extractTitle(r) === entry.titleText));
+    });
+
+    if (!gone) {
+      throw new Error(`Clicked "Delete" for "${entry.titleText}" but it's still in Saved for later.`);
     }
   }
 
@@ -688,6 +724,22 @@
       (async () => {
         try {
           await saveCartItemForLater(msg.key);
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
+      return true;
+    }
+
+    if (msg.type === 'SFL_DELETE_ITEM') {
+      if (status.running) {
+        sendResponse({ ok: false, error: 'A reorder is in progress.' });
+        return;
+      }
+      (async () => {
+        try {
+          await deleteSavedItem(msg.key);
           sendResponse({ ok: true });
         } catch (err) {
           sendResponse({ ok: false, error: err.message });

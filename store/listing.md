@@ -33,6 +33,7 @@ FEATURES
 • Select several items with Shift+click and drag them together
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
 • Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Reordering while filtered still keeps your whole list in order.
+• Delete an item from Saved for later right from the popup's right-click menu
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
 • Your in-progress arrangement survives closing the popup, until you reload or leave the page
 • Optional sync: keep your settings and labels in sync across your computers through your own Chrome account. Off by default; you can sync on demand or delete the synced copy at any time.

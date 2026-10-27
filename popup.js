@@ -13,6 +13,7 @@ let naturalOrder = []; // array of keys in the order Amazon's page actually show
 let itemsByKey = new Map();
 let cartItems = []; // items currently in the cart, eligible to be saved for later
 let savingCartKey = null; // key currently being moved from cart -> saved, if any
+let deletingKey = null; // key currently being deleted from saved-for-later, if any
 let activeTabId = null;
 let statusPollHandle = null;
 let watchHandle = null;
@@ -128,7 +129,7 @@ function renderList() {
     setupSelectable(li, key);
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      openItemLabelMenu(key, e.clientX, e.clientY);
+      openItemMenu(key, e.clientX, e.clientY);
     });
 
     const badge = document.createElement('input');
@@ -191,7 +192,7 @@ function renderTileGrid() {
     setupSelectable(li, key);
     li.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      openItemLabelMenu(key, e.clientX, e.clientY);
+      openItemMenu(key, e.clientX, e.clientY);
     });
 
     const badge = document.createElement('input');
@@ -872,8 +873,8 @@ function openContextMenu(entries, x, y) {
   menu.style.top = `${top}px`;
 }
 
-function openItemLabelMenu(key, x, y) {
-  if (applyInProgress) return;
+function openItemMenu(key, x, y) {
+  if (applyInProgress || deletingKey) return;
   const current = itemLabelIds(key);
   const entries = [{ heading: 'Labels', closable: true }];
   labels.forEach((l) => {
@@ -882,13 +883,45 @@ function openItemLabelMenu(key, x, y) {
       keepOpen: true,
       onClick: () => {
         toggleItemLabel(key, l.id);
-        openItemLabelMenu(key, x, y);
+        openItemMenu(key, x, y);
       }
     });
   });
   if (labels.length) entries.push('sep');
   entries.push({ label: '＋ New label…', onClick: () => promptLabelName('New label', '', (name) => createLabel(name, key)) });
+  entries.push('sep');
+  entries.push({ label: 'Delete from Saved for later…', danger: true, onClick: () => confirmDeleteItem(key) });
   openContextMenu(entries, x, y);
+}
+
+// Deleting goes through Amazon's own "Delete" control, so it's permanent
+// and outside undo/redo — hence the confirmation.
+function confirmDeleteItem(key) {
+  const item = itemsByKey.get(key);
+  const text = document.createElement('p');
+  text.textContent = `Delete “${(item && item.title) || key}” from your Saved for later list on Amazon? This can't be undone.`;
+  openDialog('Delete item', [text], [
+    { label: 'Cancel' },
+    { label: 'Delete', danger: true, onClick: () => { deleteSavedItem(key); } }
+  ]);
+}
+
+async function deleteSavedItem(key) {
+  if (!activeTabId || deletingKey || applyInProgress) return;
+  deletingKey = key;
+  setStatus('Deleting…');
+  try {
+    const res = await sendToTab(activeTabId, { type: 'SFL_DELETE_ITEM', key });
+    if (res && res.ok) {
+      setStatus('');
+    } else {
+      setStatus(res && res.error ? res.error : 'Could not delete that item.', true);
+    }
+  } catch (err) {
+    setStatus(`Could not reach the page: ${err.message}`, true);
+  }
+  deletingKey = null;
+  await loadItems();
 }
 
 function onLabelFilterChange(select) {
