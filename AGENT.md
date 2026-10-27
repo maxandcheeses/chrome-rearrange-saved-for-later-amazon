@@ -6,17 +6,21 @@ section, then applies that order for real on amazon.com by driving the
 page's own "Move to cart" / "Save for later" controls to bump items into
 place.
 
-No data is collected, stored remotely, or transmitted anywhere — all state
-lives in the popup's memory, the content script's in-page memory, and
-`chrome.storage.local` (extension settings, plus user-defined item labels).
+No data is ever collected or sent to the developer or any third party —
+all state lives in the popup's memory, the content script's in-page
+memory, and `chrome.storage.local` (extension settings, plus user-defined
+item labels). The one exception is opt-in: with sync turned on, settings
+and labels are also copied to `chrome.storage.sync`, i.e. the user's own
+Chrome sync account. Keep any privacy wording consistent with that.
 
 ## Architecture
 
 - `manifest.json` — MV3 manifest. Content script is injected on all Amazon
   storefront domains listed under `content_scripts.matches`. Popup is
   `popup.html`.
-- `background.js` — minimal service worker whose only job is greying out
-  the toolbar icon off Amazon cart pages: the action is disabled by
+- `background.js` — service worker with two jobs: running the optional
+  sync (see "Sync" below), and greying out the toolbar icon off Amazon
+  cart pages: the action is disabled by
   default, disabled again per tab whenever it starts loading (per-tab state
   otherwise survives navigation), and enabled per tab when the content
   script confirms a cart page — either by answering an `SFL_PING` sent on
@@ -65,7 +69,13 @@ lives in the popup's memory, the content script's in-page memory, and
   transient pending action. "Show interposing items" (the toggle next to
   the filter) additionally shows, dimmed, the non-matching items between
   the first and last match; it's display-only and resets whenever the
-  filter changes.
+  filter changes. The label editor ("Edit labels…") is transactional:
+  `labelEditBefore` holds the state from when it opened, edits preview
+  live but skip `saveLabels` and `recordChange`, Done saves them as a
+  single undo step (`finishLabelEdit`), and any other dismissal (✕,
+  backdrop, Escape — all routed through `dismissDialog`) restores the
+  snapshot (`discardLabelEdit`). Closing the popup mid-edit also loses
+  them, since nothing was saved.
 - Undo/redo (`popup.js`, "Undo / redo" section) — snapshots of the
   arrangement and labels taken before each change (`recordChange`), bound
   to the toolbar buttons and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y
@@ -79,6 +89,25 @@ lives in the popup's memory, the content script's in-page memory, and
   the label filter hides selected items.
 - Custom tooltips (`setupTooltips`) replace Chrome's slow native ones for
   every element with a `title`; code keeps setting `.title` as usual.
+- Sync (`storage.js`, plus `background.js` and the "Sync" section of
+  `popup.js`) — opt-in, per computer (`sfl_sync` in local storage).
+  Everything keeps reading and writing `chrome.storage.local`; the
+  background worker mirrors `sfl_settings` and `sfl_labels` to and from
+  `chrome.storage.sync`, copying whichever side has the newer `updatedAt`
+  (stamped by `saveSettings`/`saveLabels`), debounced to respect sync's
+  write limits. Labels are split into ≤7 KB chunks in sync (8 KB per-item
+  quota); each chunk carries its save's `updatedAt` so half-arrived saves
+  are ignored. Turning sync on with differing labels on both sides asks
+  which to keep. Sync errors (quota) land in `sfl_sync_status` and show
+  under the toggle, along with the last sync time. "Sync now" sends
+  `SFL_SYNC_NOW` and waits for the reconcile's result. "Delete synced
+  data…" turns sync off here, then `deleteSynced` writes an
+  `sfl_sync_deleted` marker *before* removing the rest. Any computer whose
+  sync was enabled (`enabledAt` in the flag) before that marker turns its
+  own sync off in `reconcile` instead of uploading its copy again.
+  `storage.js` is loaded by both popup.html and
+  `importScripts` in the worker, so it must not redeclare popup.js
+  globals, and it must be in the build zip.
 - `content.js` — injected into the Amazon cart page. Scans the DOM for
   saved-for-later rows (`scanItems`), optionally auto-scrolls to force lazy
   loading of the full list (`autoScrollToLoadAll`), computes a bump plan to
@@ -112,6 +141,12 @@ lives in the popup's memory, the content script's in-page memory, and
   changes; don't hand-edit individual sizes.
 
 ## Notes for future changes
+
+- `store/listing.md` holds the Chrome Web Store listing copy and Privacy
+  practices answers. The dashboard can't be updated by API or browser
+  automation, so it's pasted in by hand at release time. Update it with
+  any user-facing feature or data-handling change; the summary line is
+  `manifest.json`'s `description` (≤132 chars).
 
 - Amazon's DOM structure for the cart page is not versioned or documented
   anywhere — `content.js`'s selectors are inherently fragile scraping logic

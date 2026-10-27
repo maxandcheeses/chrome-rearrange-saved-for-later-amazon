@@ -38,6 +38,14 @@ const LABEL_NAME_MAX = 40;
 let labels = []; // [{ id, name, color }]
 let labelsOf = new Map(); // item key -> Set of label ids
 let labelFilter = 'all'; // 'all' | 'none' | label id
+// While the label editor is open: the state from before it opened. Edits
+// made in it show up live but aren't saved or recorded as undo steps until
+// Done (one step for the whole session); dismissing the editor any other
+// way restores this. Null when the editor isn't open.
+let labelEditBefore = null;
+// updatedAt of the settings/labels this popup last loaded or saved, to tell
+// its own writes apart from ones that came in through sync while it's open.
+const seenUpdatedAt = { settings: undefined, labels: undefined };
 // Items picked with Shift+click. Dragging any of them moves them all as one
 // block (see moveKeysTo). Display-only state — never persisted.
 let selectedKeys = new Set();
@@ -417,6 +425,22 @@ function setGridMode(on) {
   document.body.classList.toggle('grid-mode', on);
 }
 
+// Chrome caps popups at 800x600 screen pixels, so at a page zoom above 100%
+// the body's fixed 800px width / 600px max-height no longer fit and the
+// popup shows scrollbars. Once the popup has had time to grow, any remaining
+// overflow means it hit the cap — shrink the body to the space it got.
+let fitBodyTimer = null;
+function fitBodyToPopup() {
+  clearTimeout(fitBodyTimer);
+  fitBodyTimer = setTimeout(() => {
+    const body = document.body;
+    if (body.offsetWidth > window.innerWidth) body.style.maxWidth = `${window.innerWidth}px`;
+    if (body.offsetHeight > window.innerHeight) body.style.maxHeight = `${window.innerHeight}px`;
+  }, 300);
+}
+window.addEventListener('resize', fitBodyToPopup);
+new ResizeObserver(fitBodyToPopup).observe(document.body);
+
 function renderCartList() {
   const section = $('cartSection');
   const listEl = $('cartList');
@@ -513,6 +537,7 @@ function snapshotState() {
 // Records `before` as an undo step if anything actually changed since it
 // was taken; a new change also discards any redo steps.
 function recordChange(before) {
+  if (labelEditBefore) return; // the label editor records one step on Done
   if (JSON.stringify(before) === JSON.stringify(snapshotState())) return;
   undoStack.push(before);
   if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
@@ -599,6 +624,7 @@ function loadLabels() {
   return new Promise((resolve) => {
     chrome.storage.local.get(LABELS_STORAGE_KEY, (res) => {
       const saved = res[LABELS_STORAGE_KEY] || {};
+      seenUpdatedAt.labels = saved.updatedAt;
       labels = Array.isArray(saved.labels) ? saved.labels : [];
       labelsOf = new Map();
       Object.entries(saved.items || {}).forEach(([key, ids]) => {
@@ -613,7 +639,9 @@ function loadLabels() {
 function saveLabels() {
   const items = {};
   labelsOf.forEach((ids, key) => { if (ids.size) items[key] = [...ids]; });
-  chrome.storage.local.set({ [LABELS_STORAGE_KEY]: { labels, items } });
+  const updatedAt = Date.now();
+  seenUpdatedAt.labels = updatedAt;
+  chrome.storage.local.set({ [LABELS_STORAGE_KEY]: { labels, items, updatedAt } });
 }
 
 // Common tail for anything that changes labels: persist, then refresh the
@@ -623,8 +651,24 @@ function commitLabelChange() {
     labelFilter = 'all';
     showInBetween = false;
   }
-  saveLabels();
+  if (!labelEditBefore) saveLabels();
   renderList();
+}
+
+function finishLabelEdit() {
+  if (!labelEditBefore) return;
+  const before = labelEditBefore;
+  labelEditBefore = null;
+  recordChange(before);
+  saveLabels();
+}
+
+function discardLabelEdit() {
+  if (!labelEditBefore) return;
+  labels = labelEditBefore.labels.map((l) => ({ ...l }));
+  labelsOf = new Map(labelEditBefore.labelsOf.map(([key, ids]) => [key, new Set(ids)]));
+  labelEditBefore = null;
+  commitLabelChange();
 }
 
 function createLabel(name, forKey) {
@@ -674,6 +718,15 @@ function renameLabel(id, name) {
   if (!label) return;
   const before = snapshotState();
   label.name = name;
+  recordChange(before);
+  commitLabelChange();
+}
+
+function setLabelColor(id, color) {
+  const label = getLabel(id);
+  if (!label || label.color === color) return;
+  const before = snapshotState();
+  label.color = color;
   recordChange(before);
   commitLabelChange();
 }
@@ -851,18 +904,32 @@ function onLabelFilterChange(select) {
 
 function closeDialog() {
   // Blur first so a field edited in place (e.g. a label name in the editor)
-  // fires its change handler and is saved, whichever way the dialog closes.
+  // fires its change handler before the dialog's content goes away.
   if ($('dialog').contains(document.activeElement)) document.activeElement.blur();
   $('dialog').classList.remove('show');
   $('dialogBackdrop').classList.remove('show');
   document.body.classList.remove('dialog-open');
 }
 
+let dialogOnDismiss = null;
+
+// Closes the dialog without picking any of its actions (✕, backdrop click,
+// Escape, controls being disabled), running its onDismiss afterwards.
+function dismissDialog() {
+  if (!$('dialog').classList.contains('show')) return;
+  const onDismiss = dialogOnDismiss;
+  dialogOnDismiss = null;
+  closeDialog();
+  if (onDismiss) onDismiss();
+}
+
 // actions: [{ label, primary, danger, onClick }] — onClick returning false
 // keeps the dialog open (e.g. for validation). `closable` adds a ✕ in the
-// header for dialogs that are browsed rather than answered.
-function openDialog(title, bodyNodes, actions, { closable = false } = {}) {
+// header for dialogs that are browsed rather than answered. `onDismiss` runs
+// when the dialog is closed without one of its actions (see dismissDialog).
+function openDialog(title, bodyNodes, actions, { closable = false, onDismiss = null } = {}) {
   closeContextMenu();
+  dialogOnDismiss = onDismiss;
   $('dialogTitle').textContent = title;
   $('dialogCloseBtn').style.display = closable ? '' : 'none';
   $('dialogBody').replaceChildren(...bodyNodes);
@@ -910,12 +977,15 @@ function promptLabelName(title, initial, onSave) {
 
 const TRASH_ICON_PATH = 'M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z'; // "delete-outline" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0)
 
-// Lists every label with its name editable in place (applied on Enter or
-// when the field loses focus, so each rename is its own undo step), its item
-// count, and a delete button that goes through confirmDeleteLabel and then
+// Lists every label with a color swatch (click to pick from the palette),
+// its name editable in place (applied on Enter or when the field loses
+// focus), its item count, and a delete button that goes through confirmDeleteLabel and then
 // comes back here. Rows can be dragged by their ⠿ handle to reorder labels.
 function openLabelEditor() {
   closeContextMenu();
+  // Also re-entered mid-session (after a reorder or a delete), which keeps
+  // the original starting point.
+  if (!labelEditBefore) labelEditBefore = snapshotState();
   const list = document.createElement('div');
   list.className = 'label-editor';
   if (!labels.length) {
@@ -939,8 +1009,13 @@ function openLabelEditor() {
     handle.addEventListener('mousedown', () => { row.draggable = true; });
     row.addEventListener('mouseup', () => { row.draggable = false; });
 
-    const swatch = document.createElement('span');
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
     swatch.className = `label-swatch label-c${label.color}`;
+    swatch.title = 'Change color';
+    swatch.setAttribute('aria-label', `Change color of “${label.name}”`);
+    swatch.setAttribute('aria-expanded', 'false');
+    swatch.addEventListener('click', () => toggleLabelPalette(row, label, swatch));
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -972,7 +1047,52 @@ function openLabelEditor() {
     row.append(handle, swatch, input, count, del);
     list.appendChild(row);
   });
-  openDialog('Edit labels', [list], [{ label: 'Done', primary: true }], { closable: true });
+  openDialog('Edit labels', [list], [{
+    label: 'Done',
+    primary: true,
+    onClick: () => {
+      // Apply a name still being typed before saving.
+      if (list.contains(document.activeElement)) document.activeElement.blur();
+      finishLabelEdit();
+    }
+  }], { closable: true, onDismiss: discardLabelEdit });
+}
+
+// Opens (or closes) the color palette right below a label editor row. Only
+// one palette is open at a time; picking a color updates the swatch in place
+// rather than re-rendering the editor, so focus and scroll stay put.
+function toggleLabelPalette(row, label, swatch) {
+  const list = row.parentElement;
+  const open = list.querySelector('.label-palette');
+  const wasThisRow = open && open.previousElementSibling === row;
+  if (open) {
+    open.remove();
+    list.querySelectorAll('.label-swatch').forEach((s) => s.setAttribute('aria-expanded', 'false'));
+  }
+  if (wasThisRow) return;
+  const palette = document.createElement('div');
+  palette.className = 'label-palette';
+  palette.setAttribute('role', 'radiogroup');
+  palette.setAttribute('aria-label', `Color of “${label.name}”`);
+  for (let c = 0; c < LABEL_COLORS; c++) {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    opt.className = `label-palette-opt label-c${c}`;
+    opt.setAttribute('role', 'radio');
+    opt.setAttribute('aria-checked', String(c === label.color));
+    opt.setAttribute('aria-label', `Color ${c + 1}`);
+    opt.textContent = 'Aa';
+    opt.addEventListener('click', () => {
+      setLabelColor(label.id, c);
+      swatch.className = `label-swatch label-c${c}`;
+      swatch.setAttribute('aria-expanded', 'false');
+      palette.remove();
+      swatch.focus();
+    });
+    palette.appendChild(opt);
+  }
+  row.after(palette);
+  swatch.setAttribute('aria-expanded', 'true');
 }
 
 function attachLabelRowDrag(row, list) {
@@ -1040,10 +1160,11 @@ function confirmDeleteLabel(id, onDone) {
   }
   // Returning false keeps the dialog open, since onDone re-fills it.
   const finish = () => (onDone ? (onDone(), false) : true);
+  // Dismissing it from the editor counts as Cancel and goes back there.
   openDialog('Delete label', body, [
     { label: 'Cancel', onClick: finish },
     { label: 'Delete', danger: true, onClick: () => { deleteLabel(id, select ? select.value : null); return finish(); } }
-  ]);
+  ], { onDismiss: onDone });
 }
 
 // Saves the current manual arrangement in the content script's memory so
@@ -1565,7 +1686,7 @@ function setControlsDisabled(disabled) {
   $('gridViewBtn').disabled = disabled;
   ['addLabelBtn', 'addLabelBtnModal', 'labelFilter', 'labelFilterModal', 'inBetweenBtn', 'inBetweenBtnModal']
     .forEach((id) => { $(id).disabled = disabled; });
-  if (disabled) { closeContextMenu(); closeDialog(); }
+  if (disabled) { closeContextMenu(); dismissDialog(); }
   $('loadAllBtnInline').disabled = disabled;
   $('loadAllBtnModal').disabled = disabled;
   $('list').classList.toggle('disabled', disabled);
@@ -1724,6 +1845,7 @@ function pollStatus() {
 function loadSettings(onLoaded) {
   chrome.storage.local.get(STORAGE_KEY, (res) => {
     const s = { ...DEFAULTS, ...(res[STORAGE_KEY] || {}) };
+    seenUpdatedAt.settings = s.updatedAt;
     $('delay').value = s.bumpDelayMs;
     $('reloadAfterApply').checked = s.reloadAfterApply;
     $('defaultView').value = s.defaultView === 'grid' ? 'grid' : 'popup';
@@ -1745,8 +1867,10 @@ function saveSettings() {
     tileSize,
     defaultView: $('defaultView').value === 'grid' ? 'grid' : 'popup',
     titleLinksEnabled,
-    tableView
+    tableView,
+    updatedAt: Date.now()
   };
+  seenUpdatedAt.settings = s.updatedAt;
   chrome.storage.local.set({ [STORAGE_KEY]: s });
   // Only switch views when the Default view setting itself changed — every
   // other save (zoom, table view, delay…) must leave the current view alone,
@@ -1767,7 +1891,155 @@ function toggleSettingsPanel(forceOpen) {
   backdrop.classList.toggle('show', opening);
 }
 
+// ---- Sync (see storage.js) ----
+// The popup flips the per-computer switch, settles a conflict when turning
+// it on, and offers Sync now / Delete synced data; background.js does the
+// actual copying.
+
+function setSyncEnabled(enabled) {
+  $('syncEnabled').checked = enabled;
+  $('syncNowBtn').disabled = !enabled;
+  // enabledAt: synced data deleted before this point doesn't turn it back off.
+  chrome.storage.local.set({ [SYNC_FLAG_KEY]: enabled ? { enabled, enabledAt: Date.now() } : { enabled } });
+  if (!enabled) chrome.storage.local.remove(SYNC_STATUS_KEY);
+  renderSyncStatus(null);
+}
+
+// status: { error, at, notice } as recorded by background.js, or
+// { notice: 'deletedHere' } right after deleting from this popup.
+function renderSyncStatus(status) {
+  const el = $('syncStatus');
+  el.classList.remove('sync-error');
+  el.textContent = '';
+  if (!status) return;
+  if (status.notice === 'deleted') {
+    el.textContent = 'Your synced data was deleted from another computer, so sync was turned off here. Everything is still saved on this computer.';
+  } else if (status.notice === 'deletedHere') {
+    el.textContent = 'Synced data deleted. Everything is still saved on this computer.';
+  } else if (status.error) {
+    let reason = 'Chrome sync rejected the last update';
+    if (/QUOTA_BYTES/.test(status.error)) reason = 'Your labels are too large for Chrome sync (100 KB limit)';
+    else if (/WRITE_OPERATIONS/.test(status.error)) reason = 'Too many changes in a short time — try Sync now in a minute';
+    el.textContent = `${reason}. Everything is still saved on this computer.`;
+    el.classList.add('sync-error');
+  } else if (status.at && $('syncEnabled').checked) {
+    el.textContent = `Last synced ${new Date(status.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+  }
+}
+
+async function syncNow() {
+  const btn = $('syncNowBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+  let status;
+  try {
+    status = await chrome.runtime.sendMessage({ type: 'SFL_SYNC_NOW' });
+  } catch (e) {
+    status = { error: String(e.message || e) };
+  }
+  btn.textContent = 'Sync now';
+  btn.disabled = !$('syncEnabled').checked;
+  renderSyncStatus(status);
+}
+
+// Sync is turned off here first so background.js doesn't upload this
+// computer's copy straight back; the marker deleteSynced leaves turns it
+// off on the other computers too.
+function confirmDeleteSynced() {
+  const text = document.createElement('p');
+  text.textContent = 'This removes your settings and labels from your Chrome account and turns sync off on all your computers. ' +
+    'Each computer keeps its own copy.';
+  openDialog('Delete synced data', [text], [
+    { label: 'Cancel' },
+    {
+      label: 'Delete',
+      danger: true,
+      onClick: async () => {
+        setSyncEnabled(false);
+        try {
+          await deleteSynced();
+          renderSyncStatus({ notice: 'deletedHere' });
+        } catch (e) {
+          renderSyncStatus({ error: String(e.message || e) });
+        }
+      }
+    }
+  ]);
+}
+
+// Turning sync on: if this computer and Chrome sync both have labels and
+// they differ, ask which to keep (otherwise the more recently saved copy
+// would silently replace the other). Settings just go by the newer copy.
+async function onSyncToggle() {
+  if (!$('syncEnabled').checked) { setSyncEnabled(false); return; }
+  $('syncEnabled').checked = false; // until settled
+  let remote;
+  try {
+    remote = await readSynced();
+  } catch (e) {
+    renderSyncStatus({ error: String(e.message || e) });
+    return;
+  }
+  const items = {};
+  labelsOf.forEach((ids, key) => { if (ids.size) items[key] = [...ids]; });
+  const here = { labels, items };
+  const synced = remote.labels;
+  if (!synced || !synced.labels.length || !labels.length || sameLabelData(here, synced)) {
+    setSyncEnabled(true);
+    return;
+  }
+  const text = document.createElement('p');
+  text.textContent = `Chrome sync already has labels from another computer (${synced.labels.length}), ` +
+    `and they differ from this computer's (${labels.length}). Which should be kept on both?`;
+  openDialog('Turn on sync', [text], [
+    { label: 'Cancel' },
+    {
+      label: "This computer's",
+      onClick: () => { saveLabels(); setSyncEnabled(true); } // a fresh save is the newer copy
+    },
+    {
+      label: 'Synced',
+      primary: true,
+      onClick: () => {
+        chrome.storage.local.set({ [LABELS_STORAGE_KEY]: synced }, () => {
+          loadLabels().then(() => { commitLabelChange(); setSyncEnabled(true); });
+        });
+      }
+    }
+  ]);
+}
+
+function setupSync() {
+  chrome.storage.local.get([SYNC_FLAG_KEY, SYNC_STATUS_KEY], (res) => {
+    const enabled = !!(res[SYNC_FLAG_KEY] && res[SYNC_FLAG_KEY].enabled);
+    $('syncEnabled').checked = enabled;
+    $('syncNowBtn').disabled = !enabled;
+    renderSyncStatus(res[SYNC_STATUS_KEY]);
+    if (enabled) chrome.runtime.sendMessage({ type: 'SFL_SYNC_NOW' }).catch(() => {});
+  });
+  $('syncEnabled').addEventListener('change', onSyncToggle);
+  $('syncNowBtn').addEventListener('click', syncNow);
+  $('deleteSyncBtn').addEventListener('click', confirmDeleteSynced);
+  // Pick up what background.js pulls in from sync while the popup is open.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    // background.js turns sync off when the synced data was deleted elsewhere.
+    if (changes[SYNC_FLAG_KEY]) {
+      const enabled = !!(changes[SYNC_FLAG_KEY].newValue && changes[SYNC_FLAG_KEY].newValue.enabled);
+      $('syncEnabled').checked = enabled;
+      $('syncNowBtn').disabled = !enabled;
+    }
+    if (changes[SYNC_STATUS_KEY] && changes[SYNC_STATUS_KEY].newValue) renderSyncStatus(changes[SYNC_STATUS_KEY].newValue);
+    const settings = changes[STORAGE_KEY] && changes[STORAGE_KEY].newValue;
+    if (settings && settings.updatedAt !== seenUpdatedAt.settings) loadSettings();
+    const saved = changes[LABELS_STORAGE_KEY] && changes[LABELS_STORAGE_KEY].newValue;
+    // Not mid-edit: the label editor's session would be built on stale state.
+    if (saved && saved.updatedAt !== seenUpdatedAt.labels && !labelEditBefore) loadLabels().then(renderList);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  setupSync();
   loadSettings((s) => {
     if (s.defaultView === 'grid') setGridMode(true);
   });
@@ -1829,8 +2101,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleInBetween = () => { showInBetween = !showInBetween; renderList(); };
   $('inBetweenBtn').addEventListener('click', toggleInBetween);
   $('inBetweenBtnModal').addEventListener('click', toggleInBetween);
-  $('dialogBackdrop').addEventListener('click', closeDialog);
-  $('dialogCloseBtn').addEventListener('click', closeDialog);
+  $('dialogBackdrop').addEventListener('click', dismissDialog);
+  $('dialogCloseBtn').addEventListener('click', dismissDialog);
   // A click elsewhere or Escape dismisses the context menu (as does its ✕).
   // Deliberately not scrolling: ticking a label re-renders the list, which
   // fires scroll events and would close the menu mid-way through labeling.
@@ -1841,7 +2113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key !== 'Escape') return;
     const overlayOpen = $('ctxMenu').classList.contains('show') || $('dialog').classList.contains('show');
     closeContextMenu();
-    closeDialog();
+    dismissDialog();
     if (!overlayOpen) clearSelection();
   });
   $('delay').addEventListener('change', saveSettings);

@@ -4,8 +4,10 @@ A Chrome extension that lets you drag-and-drop (or type a position number)
 to reorder the items in your Amazon "Saved for later" list, then applies
 that order for real on amazon.com.
 
-No data is collected, stored remotely, or transmitted anywhere. Everything
-happens locally in your browser.
+No data is ever collected, shared, or sent to the developer or anyone
+else. Everything happens and is stored locally in your browser — unless
+you turn on the optional sync, which stores your settings and labels in
+your own Chrome account (see [Settings](#settings)).
 
 ![Popup screenshot](screenshots/store-screenshot-1.png)
 
@@ -60,8 +62,9 @@ filter dropdown to show only items with a given label — reordering while
 filtered still moves items within your full list, and **Apply order**
 always applies the whole list. Turn on "Show interposing items" to also
 see, dimmed, the unlabeled items sitting between your filtered ones.
-Pick **Edit labels…** in the dropdown to rename, reorder, or delete
-labels. Labels are saved locally in your browser and stick to items
+Pick **Edit labels…** in the dropdown to rename, recolor, reorder, or delete
+labels — click **Done** to save your edits, or close the editor (✕, click
+outside, or Escape) to discard them. Labels are saved locally in your browser and stick to items
 across sessions.
 
 ## Settings
@@ -72,6 +75,20 @@ Click the ⚙ button to adjust:
   missed or duplicated.
 - **Refresh the page after applying the order** — reloads the page once
   reordering finishes, so you see the final result immediately.
+- **Sync settings and labels across your computers** — off by default.
+  When on, your settings and labels are kept in sync through your own
+  Chrome account, on every computer where you're signed into Chrome with
+  extension sync enabled and have this turned on. Nothing goes to the
+  developer or anyone else. If both this computer and your Chrome account
+  already have different labels when you turn it on, you'll be asked which
+  to keep; after that, the most recent change wins. Chrome limits synced
+  data to 100 KB, which is a few thousand labeled items; past that, labels
+  keep working on each computer but stop syncing. Your in-progress
+  arrangement is never synced.
+  - **Sync now** syncs right away instead of waiting for the next change.
+  - **Delete synced data…** removes your settings and labels from your
+    Chrome account and turns sync off on all your computers. Each computer
+    keeps its own copy, and you can turn sync back on later.
 
 ## Limitations
 

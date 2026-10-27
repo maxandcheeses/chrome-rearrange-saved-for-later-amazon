@@ -4,10 +4,16 @@
 <meta charset="utf-8">
 <title>Saved for Later Reorder</title>
 <style>
-  html { max-height: 600px; }
+  /* body is the only scroll container. A non-visible overflow on html stops
+     body's overflow propagating to the viewport, and with no body margin the
+     vertical scrollbar narrows the content instead of pushing it sideways. */
+  /* The popup window still draws its own scrollbars while popup.js's
+     fitBodyToPopup() waits to shrink the body; nothing should scroll at that
+     level, so hide them. (scrollbar-width isn't inherited, so body keeps its.) */
+  html { max-height: 600px; overflow: hidden; scrollbar-width: none; }
   body {
-    font-family: "Amazon Ember", Arial, sans-serif; width: 360px; padding: 8px; font-size: 13px;
-    color: #0f1111; background: #fff; max-height: 600px; overflow-y: auto; box-sizing: border-box;
+    font-family: "Amazon Ember", Arial, sans-serif; width: 360px; margin: 0; padding: 12px; font-size: 13px;
+    color: #0f1111; background: #fff; max-height: 600px; overflow-x: hidden; overflow-y: auto; box-sizing: border-box;
     transition: width 0.15s ease;
   }
   body.grid-mode { width: 800px; max-height: 600px; }
@@ -35,7 +41,8 @@
   #list.disabled { pointer-events: none; opacity: 0.6; }
   #list li {
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 8px; border-bottom: 1px solid #eee; background: #fff; cursor: grab;
+    /* Extra right padding keeps label chips clear of the list's scrollbar. */
+    padding: 6px 14px 6px 8px; border-bottom: 1px solid #eee; background: #fff; cursor: grab;
   }
   #list li:last-child { border-bottom: none; }
   #list li.drag-source { opacity: 0.35; }
@@ -138,13 +145,13 @@
      stretched to fill the modal's full width/height instead of being capped
      to a narrow column. */
   #tileGrid.table-view {
-    display: block; border: 1px solid #d5d9d9; border-radius: 8px; width: 100%;
+    display: block; border: 1px solid #d5d9d9; border-radius: 8px; width: 100%; box-sizing: border-box;
   }
   #tileGrid.table-view li.tile {
     width: 100%; box-sizing: border-box;
     flex-direction: row; align-items: center; gap: 8px;
     border: none; border-radius: 0; border-bottom: 1px solid #eee;
-    padding: 2px 10px;
+    padding: 2px 16px 2px 10px;
   }
   #tileGrid.table-view li.tile:last-child { border-bottom: none; }
   #tileGrid.table-view li.tile .handle { display: block; color: #999; flex-shrink: 0; }
@@ -253,6 +260,11 @@
     width: 100%; box-sizing: border-box; margin-top: 2px; border: 1px solid #949494;
     border-radius: 8px; padding: 5px 8px; font-family: inherit; font-size: 13px;
   }
+  /* Same custom chevron as the label filter, in place of the native arrow. */
+  #settingsPanel select, #dialog select {
+    appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 28px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
+  }
   #settingsPanel select:focus, #settingsPanel input[type="number"]:focus {
     outline: none; border-color: #e77600; box-shadow: 0 0 0 3px rgba(228, 121, 17, 0.5);
   }
@@ -260,6 +272,16 @@
   #settingsPanel .checkbox-row label { display: inline; margin: 0; font-weight: normal; }
   #settingsPanel .checkbox-row input { width: auto; margin: 0; }
   .hint { color: #777; font-size: 11px; margin: 2px 0 0; }
+  #syncStatus:empty { display: none; }
+  #syncStatus.sync-error { color: #c40000; }
+  #settingsPanel .sync-actions { display: flex; gap: 6px; margin-top: 6px; }
+  #settingsPanel .sync-actions button {
+    height: 24px; padding: 0 10px; font-size: 12px; line-height: 1; box-shadow: none;
+    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111;
+  }
+  #settingsPanel .sync-actions button:hover:not(:disabled) { background: #e3e6e6; }
+  #settingsPanel .sync-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #settingsPanel #deleteSyncBtn { color: #c40000; }
   #bmcLink {
     display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
     background: #FFDD00; color: #000; border: 1px solid #000; border-radius: 999px;
@@ -282,8 +304,12 @@
   #labelBar { margin-bottom: 6px; }
   .labelBar select {
     flex: 1; min-width: 0; max-width: 220px; border: 1px solid #d5d9d9; border-radius: 999px;
-    padding: 3px 8px; font-family: inherit; font-size: 12px; background: #f0f2f2; color: #0f1111;
+    padding: 3px 26px 3px 10px; font-family: inherit; font-size: 12px; color: #0f1111;
+    /* The native arrow sits flush against the pill's rounded edge; draw our own chevron. */
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    background: #f0f2f2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
   }
+  .labelBar select:hover { background-color: #e3e6e6; }
   .labelBar select:focus { outline: none; border-color: #e77600; box-shadow: 0 0 0 2px rgba(228, 121, 17, 0.4); }
   .labelBar button {
     flex-shrink: 0; height: 24px; padding: 0 10px; font-size: 12px; line-height: 1;
@@ -317,6 +343,19 @@
   .label-editor-row.drag-over-before { box-shadow: 0 -2px 0 0 #e77600; }
   .label-editor-row.drag-over-after { box-shadow: 0 2px 0 0 #e77600; }
   .label-swatch { width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; background: currentColor; }
+  /* In the label editor the swatch is a button that opens the palette. */
+  button.label-swatch {
+    width: 16px; height: 16px; padding: 0; border: none; box-shadow: none;
+    outline: 2px solid transparent; outline-offset: 1px;
+  }
+  button.label-swatch:hover, button.label-swatch[aria-expanded="true"] { outline-color: #d5d9d9; }
+  .label-palette { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 2px 22px; }
+  .label-palette-opt {
+    width: 30px; height: 20px; padding: 0; font-size: 10px; font-weight: 600; line-height: 1;
+    border: 1px solid transparent; border-radius: 999px; box-shadow: none;
+  }
+  .label-palette-opt:hover { border-color: currentColor; }
+  .label-palette-opt[aria-checked="true"] { border-color: currentColor; box-shadow: 0 0 0 1px currentColor; }
   #dialog .label-editor-row input[type="text"] { flex: 1; min-width: 0; padding: 4px 8px; font-size: 12px; }
   .label-editor-count { flex-shrink: 0; font-size: 11px; color: #565959; min-width: 44px; text-align: right; }
   .label-editor-delete {
@@ -382,6 +421,7 @@
     width: 100%; box-sizing: border-box; border: 1px solid #949494; border-radius: 8px;
     padding: 5px 8px; font-family: inherit; font-size: 13px;
   }
+  #dialog select { padding-right: 28px; }
   #dialog input[type="text"]:focus, #dialog select:focus {
     outline: none; border-color: #e77600; box-shadow: 0 0 0 3px rgba(228, 121, 17, 0.5);
   }
@@ -527,6 +567,17 @@
       <label for="titleLinksEnabled">Make item titles clickable links (opens product in background tab)</label>
     </div>
 
+    <div class="checkbox-row">
+      <input type="checkbox" id="syncEnabled">
+      <label for="syncEnabled">Sync settings and labels across your computers</label>
+    </div>
+    <p class="hint">Uses your own Chrome sync, so it needs you signed into Chrome with extension sync on. Nothing is shared with anyone else.</p>
+    <div class="sync-actions">
+      <button type="button" id="syncNowBtn" title="Sync with your Chrome account right away" disabled>Sync now</button>
+      <button type="button" id="deleteSyncBtn" title="Remove your settings and labels from your Chrome account">Delete synced data…</button>
+    </div>
+    <p id="syncStatus" class="hint" role="status"></p>
+
     <a id="bmcLink" href="https://www.buymeacoffee.com/maxwellluong" target="_blank" rel="noopener noreferrer">
       ☕ Buy me a coffee
     </a>
@@ -554,6 +605,7 @@
   <div id="tooltip" role="tooltip"></div>
   <div id="dragGhost" aria-hidden="true"></div>
 
+  <script src="storage.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

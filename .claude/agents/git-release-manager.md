@@ -13,8 +13,8 @@ remote name `origin`, default branch `main`.
 
 `.github/workflows/build.yml` triggers on any pushed tag matching `v*` (or
 manual `workflow_dispatch`). It validates `manifest.json`, zips the
-extension's runtime files (`manifest.json`, `popup.html`, `popup.js`,
-`content.js`, `content.css`, `icons/`) into
+extension's runtime files (`manifest.json`, `background.js`, `storage.js`,
+`popup.html`, `popup.js`, `content.js`, `content.css`, `icons/`) into
 `chrome-reorder-saved-for-later-amazon-<version>.zip` (version read
 straight from `manifest.json`), uploads it as a workflow artifact, and —
 only when triggered by a tag push — creates a GitHub release for that tag
@@ -56,6 +56,12 @@ Chrome Web Store Developer Dashboard.
    ```
    Confirm the zip asset is attached and named as expected. Report the
    release URL back to the user.
+7. **Remind the user about the store listing.** The publish job only
+   uploads the package; the listing text and privacy answers live in
+   `store/listing.md` and must be pasted into the Developer Dashboard by
+   hand (Chrome blocks automation on Web Store pages). If this release
+   changed user-facing features and `store/listing.md` wasn't updated,
+   say so.
 
 ## Monitoring a build
 
