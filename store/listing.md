@@ -18,7 +18,7 @@ Keep this file in sync with the shipped features, like README.md.
 Comes from `manifest.json` `description` (132-character limit), not the
 dashboard:
 
-> Drag and drop to reorder your Amazon Saved for Later list. Nothing is collected or shared; optional sync uses your Chrome account.
+> Drag and drop to rearrange your Amazon Saved for Later list. Nothing is collected or shared; optional sync uses your Chrome account.
 
 ### Description
 
@@ -32,7 +32,7 @@ FEATURES
 • Compact view, or an extended grid/table view for long lists
 • Select several items (⌘/Ctrl+click, or Shift+click for a range) and drag them together
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
-• Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Reordering while filtered still keeps your whole list in order.
+• Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Rearranging while filtered still keeps your whole list in order.
 • Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. A Price targets tab lists every target with how far each price is from it (checked while the popup is open on your cart)
 • Right-click an item to add it to your cart while keeping it in Saved for later, open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
@@ -49,13 +49,13 @@ GOOD TO KNOW
 • Price targets only check prices while the popup is open on your cart, and only for items still in your Saved for later list — there's no background price tracking.
 • Works on Amazon storefronts in many countries. If Amazon changes its cart page, item detection may need an update.
 
-Free and open source: github.com/maxandcheeses/chrome-reorder-saved-for-later-amazon
+Free and open source: github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon
 ```
 
 ### Screenshots
 
 The current store screenshots (`screenshots/store-screenshot-*.png`,
-1280x800) show the reorder list with labels, applying an order with
+1280x800) show the rearrange list with labels, applying an order with
 progress, the Price targets tab with a target that has been hit, and the
 list filtered to one label. Regenerate with the screenshot-generator agent
 whenever the popup UI changes.
@@ -67,7 +67,7 @@ whenever the popup UI changes.
 ### Single purpose
 
 ```text
-Lets the user reorder the items in their Amazon "Saved for later" cart list and apply that order to their real Amazon list.
+Lets the user rearrange the items in their Amazon "Saved for later" cart list and apply that order to their real Amazon list.
 ```
 
 ### Permission justifications

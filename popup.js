@@ -2093,7 +2093,7 @@ function appendLabelEditorRow(list, label, section) {
   const handle = document.createElement('span');
   handle.className = 'label-editor-handle';
   handle.textContent = '⠿';
-  handle.title = 'Drag to reorder';
+  handle.title = 'Drag to rearrange';
   // Rows are only draggable while grabbed by the handle, so dragging in
   // the name field still selects text as usual.
   handle.addEventListener('mousedown', () => { row.draggable = true; });
@@ -2822,7 +2822,7 @@ function startWatching(tabId) {
     if (loadingAll) {
       setMsg(`Scrolling to load all saved items… ${order.length} found so far.`, false, true);
     } else {
-      setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, right-click to label, then Apply.`);
+      setMsg(`${order.length} saved item(s). Drag or type a position number to rearrange, right-click to label, then Apply.`);
       setIncompleteBanner(!!(snap && snap.mayBeIncomplete));
     }
     updateApplyButton();
@@ -2940,7 +2940,7 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
     return;
   }
 
-  setMsg(`${order.length} saved item(s). Drag or type a position number to reorder, right-click to label, then Apply.`);
+  setMsg(`${order.length} saved item(s). Drag or type a position number to rearrange, right-click to label, then Apply.`);
   setIncompleteBanner(!!(res && res.mayBeIncomplete));
   renderList();
   updateResetButton();
@@ -3036,7 +3036,7 @@ async function applyOrder() {
   let error = null;
   try {
     const res = await sendToTab(activeTabId, { type: 'SFL_APPLY_ORDER', order });
-    if (res && res.started === false) error = res.error || 'The page refused to start the reorder.';
+    if (res && res.started === false) error = res.error || 'The page refused to start the rearrange.';
   } catch (err) {
     error = `Could not reach the page: ${err.message}`;
   }
@@ -3100,7 +3100,7 @@ function pollStatus() {
     if (!s) return;
     if (s.running) {
       applyInProgress = true;
-      setStatus(s.message || `Reordering ${s.current}/${s.total}…`);
+      setStatus(s.message || `Rearranging ${s.current}/${s.total}…`);
       const eta = formatEta(s.estimatedRemainingMs);
       setApplyBtnSub(eta ? `~${eta} remaining` : (s.total ? `${s.current}/${s.total}` : ''));
       $('applyBtn').disabled = true;
@@ -3429,7 +3429,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   loadLabels().then(renderList);
   loadItems(true);
-  setFooterMsg('💡 Try Extended view (top-right button) for reordering long lists faster.', 'sfl_tip_extended_dismissed');
+  setFooterMsg('💡 Try Extended view (top-right button) for rearranging long lists faster.', 'sfl_tip_extended_dismissed');
   setupImagePreview();
   setupScrollMemory();
   setupTooltips();

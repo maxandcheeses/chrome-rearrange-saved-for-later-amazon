@@ -6,7 +6,7 @@ model: sonnet
 ---
 
 You manage git/GitHub release operations for this Chrome extension project.
-The repo is `git@github.com:maxandcheeses/chrome-reorder-saved-for-later-amazon.git`,
+The repo is `git@github.com:maxandcheeses/chrome-rearrange-saved-for-later-amazon.git`,
 remote name `origin`, default branch `main`.
 
 ## What a release means here
@@ -15,7 +15,7 @@ remote name `origin`, default branch `main`.
 manual `workflow_dispatch`). It validates `manifest.json`, zips the
 extension's runtime files (`manifest.json`, `background.js`, `storage.js`,
 `popup.html`, `popup.js`, `content.js`, `content.css`, `icons/`) into
-`chrome-reorder-saved-for-later-amazon-<version>.zip` (version read
+`chrome-rearrange-saved-for-later-amazon-<version>.zip` (version read
 straight from `manifest.json`), uploads it as a workflow artifact, and —
 only when triggered by a tag push — creates a GitHub release for that tag
 with the zip attached. That release zip is what gets uploaded to the

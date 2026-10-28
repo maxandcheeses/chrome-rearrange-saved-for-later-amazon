@@ -766,7 +766,7 @@
       // Re-scan before each bump since prior bumps change the DOM/keys map.
       scanItems();
       const entry = itemsByKey.get(key);
-      status.message = `Reordering ${status.current + 1}/${sequence.length}: ${entry ? entry.titleText : key}`;
+      status.message = `Rearranging ${status.current + 1}/${sequence.length}: ${entry ? entry.titleText : key}`;
       try {
         await bumpItem(key);
       } catch (err) {
@@ -785,12 +785,12 @@
 
     if (cancelRequested) {
       status.cancelled = true;
-      status.message = `Cancelled after reordering ${status.current}/${sequence.length} item(s).`;
+      status.message = `Cancelled after rearranging ${status.current}/${sequence.length} item(s).`;
       return;
     }
 
     status.message = sequence.length
-      ? `Done! Reordered ${sequence.length} item(s) (out of ${totalCount} total).`
+      ? `Done! Rearranged ${sequence.length} item(s) (out of ${totalCount} total).`
       : 'Already in the desired order — nothing to move.';
 
     if (settings.reloadAfterApply) {
@@ -847,7 +847,7 @@
 
     if (msg.type === 'SFL_DELETE_ITEM') {
       if (status.running || deleteRunning) {
-        sendResponse({ ok: false, error: status.running ? 'A reorder is in progress.' : 'Another delete is still running.' });
+        sendResponse({ ok: false, error: status.running ? 'A rearrange is in progress.' : 'Another delete is still running.' });
         return;
       }
       deleteRunning = true;
@@ -866,7 +866,7 @@
 
     if (msg.type === 'SFL_ADD_TO_CART') {
       if (status.running) {
-        sendResponse({ ok: false, error: 'A reorder is in progress.' });
+        sendResponse({ ok: false, error: 'A rearrange is in progress.' });
         return;
       }
       (async () => {
@@ -907,7 +907,7 @@
       // Checked here, before pendingOrder is dropped, rather than only in
       // applyOrder (whose rejection nothing would catch).
       if (status.running || deleteRunning) {
-        sendResponse({ started: false, error: status.running ? 'A reorder is already running.' : 'Wait for the delete to finish.' });
+        sendResponse({ started: false, error: status.running ? 'A rearrange is already running.' : 'Wait for the delete to finish.' });
         return;
       }
       pendingOrder = null;

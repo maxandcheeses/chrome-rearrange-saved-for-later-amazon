@@ -1,4 +1,4 @@
-# Reorder Saved for Later - Amazon
+# Rearrange Saved for Later - Amazon
 
 Chrome (Manifest V3) extension that lets you drag-and-drop (or type a new
 position number) to reorder items in Amazon's "Saved for later" cart
@@ -58,7 +58,7 @@ Chrome sync account. Keep any privacy wording consistent with that.
   content.js triggers right after finishing (when reload-after-apply is
   on): if the reload severs the connection before the poll ever sees
   `s.done`, the `SFL_GET_STATUS` call just throws with no further update,
-  which used to leave stale "Reordering N/N…" text stuck on screen
+  which used to leave stale "Rearranging N/N…" text stuck on screen
   forever. The catch block now treats a disconnect that happens while
   `applyInProgress` is true as an implicit success (content.js only
   reloads after completing), clears the UI back to normal, and retries

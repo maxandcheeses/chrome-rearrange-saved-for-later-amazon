@@ -1,7 +1,7 @@
-# Reorder Saved for Later - Amazon
+# Rearrange Saved for Later - Amazon
 
 A Chrome extension that lets you drag-and-drop (or type a position number)
-to reorder the items in your Amazon "Saved for later" list, then applies
+to rearrange the items in your Amazon "Saved for later" list, then applies
 that order for real on amazon.com.
 
 **[Get it on the Chrome Web Store](https://chromewebstore.google.com/detail/reorder-saved-for-later-a/adddgnonjdifiaepengnjopamlomjmnh)**
@@ -13,9 +13,9 @@ price targets in your own Chrome account (see [Settings](#settings)).
 
 ![Popup screenshot](screenshots/store-screenshot-1.png)
 
-| Idle | Reordering in progress |
+| Idle | Rearranging in progress |
 | --- | --- |
-| ![Popup idle state](screenshots/popup.png) | ![Popup mid-reorder, with Cancel button](screenshots/popup-reorder-in-progress.png) |
+| ![Popup idle state](screenshots/popup.png) | ![Popup mid-rearrange, with Cancel button](screenshots/popup-reorder-in-progress.png) |
 
 | Label filter | Price targets |
 | --- | --- |
@@ -23,7 +23,7 @@ price targets in your own Chrome account (see [Settings](#settings)).
 
 ## Why
 
-Amazon has no way to reorder saved-for-later items — new saves always land
+Amazon has no way to rearrange saved-for-later items — new saves always land
 at one end of the list, and there's no drag handle or API for rearranging
 them. This extension works around that by driving Amazon's own "Move to
 cart" / "Save for later" controls to bump items into the position you want.
@@ -44,7 +44,7 @@ To run it from source instead:
 
 1. Go to your Amazon cart page and scroll down to "Saved for later".
 2. Click the extension icon.
-3. Drag items to reorder them, or type a number into an item's position
+3. Drag items to rearrange them, or type a number into an item's position
    badge to jump it to that spot — everything below it shifts down
    automatically.
 4. Click **Load all items** if you have more saved items than Amazon has
@@ -70,13 +70,13 @@ extension can actually do something.
 
 Right-click an item to tag it with labels like "Grocery" or "Electronics".
 An item can have several labels. Use the filter dropdown to show only items
-with a given label — reordering while filtered still moves items within
+with a given label — rearranging while filtered still moves items within
 your full list, and **Apply order** always applies the whole list. Turn on
 "Show interposing items" to also see, dimmed, the unlabeled items sitting
 between your filtered ones (the button only appears when there are some).
 
 The filter dropdown also has **＋ New label…** and **✎ Edit labels…**. The
-editor renames, recolors, reorders, and deletes labels — click **Done** to
+editor renames, recolors, rearranges, and deletes labels — click **Done** to
 save your edits, or close it (✕, click outside, or Escape) to discard them.
 Labels are saved locally in your browser and stick to items across
 sessions.
@@ -153,7 +153,7 @@ Click the ⚙ button to adjust:
   Increase this if Amazon's page feels slow to respond and items get
   missed or duplicated.
 - **Refresh the page after applying the order** — reloads the page once
-  reordering finishes, so you see the final result immediately.
+  rearranging finishes, so you see the final result immediately.
 - **Sync across computers → Sync automatically** — off by default. When on, your settings, labels and price
   targets are kept in sync through your own
   Chrome account, on every computer where you're signed into Chrome with
@@ -182,10 +182,10 @@ Click the ⚙ button to adjust:
   or "This item is no longer available from the seller you selected"
   don't have a working "Move to cart" control, which is what the
   extension relies on to detect and move saved items. These items won't
-  show up in the extension's list at all, can't be reordered, and will
+  show up in the extension's list at all, can't be rearranged, and will
   stay wherever they currently sit in your real saved-for-later list.
-- Reordering works by actually moving items to your cart and back, so it
-  takes a few seconds per item — the more items you reorder, the longer
+- Rearranging works by actually moving items to your cart and back, so it
+  takes a few seconds per item — the more items you rearrange, the longer
   Apply takes.
 - Amazon's page markup isn't versioned or guaranteed stable; if Amazon
   changes their cart page layout, item detection may need updating.
@@ -197,4 +197,4 @@ If this saved you some tedious clicking, you can
 
 ## Project
 
-[github.com/maxandcheeses/chrome-reorder-saved-for-later-amazon](https://github.com/maxandcheeses/chrome-reorder-saved-for-later-amazon)
+[github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon](https://github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon)

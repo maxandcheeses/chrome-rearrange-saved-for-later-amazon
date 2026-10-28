@@ -26,7 +26,7 @@ jobs:
       - name: Package extension for the Chrome Web Store
         run: |
           mkdir -p dist
-          zip -r "dist/chrome-reorder-saved-for-later-amazon-${{ steps.version.outputs.version }}.zip" \
+          zip -r "dist/chrome-rearrange-saved-for-later-amazon-${{ steps.version.outputs.version }}.zip" \
             manifest.json \
             background.js \
             storage.js \
