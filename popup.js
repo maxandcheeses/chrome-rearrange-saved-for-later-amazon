@@ -1495,6 +1495,8 @@ function renderPriceTargets() {
   ['tabBar', 'tabBarModal'].forEach((id) => { $(id).hidden = !hasTargets; });
   if (!hasTargets) activeTab = 'saved';
   document.body.classList.toggle('tab-targets', activeTab === 'targets');
+  // Lets the Load all banner show only when it could bring a target's item in.
+  document.body.classList.toggle('targets-off-page', [...priceRules.values()].some((r) => !order.includes(r.key)));
   document.querySelectorAll('.savedTabBtn, .targetsTabBtn').forEach((btn) => {
     const selected = btn.classList.contains('targetsTabBtn') === (activeTab === 'targets');
     btn.classList.toggle('active', selected);

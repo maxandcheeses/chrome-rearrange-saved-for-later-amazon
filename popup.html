@@ -68,7 +68,9 @@
   .syncBadge[hidden] { display: none !important; }
   #gridModalHeader .syncBadge { margin-left: auto; }
   #gridModalHeader .syncBadge:not([hidden]) + #tableViewBtn { margin-left: 0; }
-  #msg { color: var(--text-muted); font-size: 11px; margin: 5px 0; } /* as in the extended footer */
+  /* Faint like the Price targets hint; warnings and loading keep their own colors. */
+  #msg, #modalMsg { color: var(--text-faint); }
+  #msg { font-size: 11px; margin: 5px 0; } /* as in the extended footer */
   /* Shown only while at least one price target exists (renderPriceTargets). */
   .tabBar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 4px 0 6px; }
   .tabBar[hidden] { display: none; }
@@ -195,28 +197,35 @@
   #dialog .price-rule-notify input { margin: 0; }
   .target-gap { font-weight: 600; color: var(--price); }
   .target-gap.hit { color: var(--success); }
-  #msg.warning { color: var(--warning-text); }
-  #msg.loading { font-weight: bold; color: var(--text); }
+  #msg.warning, #modalMsg.warning { color: var(--warning-text); }
+  #msg.loading, #modalMsg.loading { font-weight: bold; color: var(--text); }
+  /* The "may not have loaded" prompts (#incompleteBanner, #modalIncompleteBanner,
+     .targetsLoadBanner) are a slim, bordered line of warning text with a small
+     Load all button, to keep them out of the way. */
+  #incompleteBanner, #modalIncompleteBanner, .targetsLoadBanner {
+    border: 1px solid var(--warn-border); border-radius: 8px; padding: 2px 4px 2px 8px;
+  }
   #incompleteBanner {
-    display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
-    border-radius: 8px; padding: 5px 10px; margin-top: 5px; font-size: 11px;
+    display: none; align-items: center; justify-content: center; gap: 6px;
+    color: var(--warn-text); margin-top: 4px; font-size: 11px;
   }
   /* Targets tab's own "Load all" prompt (unloaded items look "Not on this
      page" there). While loading, it shows the progress text instead, since
      #msg / the grid footer are hidden on that tab. */
   .targetsLoadBanner {
-    display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
-    border-radius: 8px; padding: 5px 10px; margin-top: 6px; font-size: 11px;
+    display: none; align-items: center; justify-content: center; gap: 6px;
+    color: var(--warn-text); margin-top: 4px; font-size: 11px;
   }
-  body.tab-targets.items-incomplete .targetsLoadBanner,
-  body.tab-targets.msg-loading .targetsLoadBanner { display: flex; }
+  /* Only while some target's item isn't on the page (targets-off-page):
+     loading the rest of the list can't change any other target. */
+  body.tab-targets.targets-off-page.items-incomplete .targetsLoadBanner,
+  body.tab-targets.targets-off-page.msg-loading .targetsLoadBanner { display: flex; }
   .targetsLoadingText { display: none; font-weight: 600; color: var(--text); }
   body.msg-loading .targetsLoadingText { display: inline; }
   body.msg-loading .targetsLoadText, body.msg-loading .loadAllBtnTargets { display: none; }
-  #incompleteBanner button, .targetsLoadBanner button {
-    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  #incompleteBanner button, .targetsLoadBanner button, #modalIncompleteBanner button {
+    flex-shrink: 0; padding: 1px 8px; font-size: 10.5px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: none; color: var(--text);
   }
   #list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
   #list.disabled { pointer-events: none; opacity: 0.6; }
@@ -351,17 +360,14 @@
   }
 
   #gridModalFooter {
-    flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+    flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
     border-top: 1px solid var(--divider); padding: 6px 14px; font-size: 11px; color: var(--text-muted);
   }
   #gridModalFooterMsgs { flex: 1; min-width: 0; }
+  /* A full-width row across the top of the footer, like the targets tab's. */
   #modalIncompleteBanner {
-    display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
-    border-radius: 8px; padding: 6px 10px; font-size: 11px; margin-top: 6px;
-  }
-  #modalIncompleteBanner button {
-    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    display: none; align-items: center; justify-content: center; gap: 6px;
+    color: var(--warn-text); font-size: 11px; flex-basis: 100%; box-sizing: border-box;
   }
   #gridModalFooterActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   #resetBtnModal {
@@ -522,13 +528,18 @@
   /* Always visible: pinned to the bottom of the popup when it scrolls, and
      outside the scrolling panel in the grid view. */
   #targetsFooter { position: sticky; bottom: -12px; margin-bottom: -12px; padding-bottom: 12px; background: var(--surface); }
-  /* min-height is set to #gridModalFooter's height (matchTargetsFooterHeight). */
+  /* min-height is set to #gridModalFooter's height (matchTargetsFooterHeight),
+     but only while the Load all banner shows (the rules below mirror its
+     display rule); with just the hint line the footer stays short.
+     !important to beat that inline min-height. */
+  body:not(.targets-off-page) #targetsFooterModal,
+  body:not(.items-incomplete):not(.msg-loading) #targetsFooterModal { min-height: 0 !important; }
   #targetsFooterModal {
     flex-shrink: 0; margin: 0; padding: 6px 14px; box-sizing: border-box;
     flex-direction: column; justify-content: center;
   }
   body.tab-targets #targetsFooterModal { display: flex; }
-  .targetsFooter .targetsLoadBanner { margin: 0 0 5px; text-align: left; }
+  .targetsFooter .targetsLoadBanner { margin: 0 0 4px; }
   body.tab-targets #popupFooter { display: none; }
 
   /* Labels: filter bar (compact view + grid header), chips on items. */
@@ -799,12 +810,12 @@
       <span class="targetsFooterHint">Includes items no longer on this page. Click a target to edit it, drag ⠿ to arrange; right-click a saved item to add a target.</span>
     </div>
     <div id="gridModalFooter">
+      <div id="modalIncompleteBanner">
+        <span title="Amazon loads Saved for later in batches as you scroll down the cart. Load all scrolls the page for you to load the rest.">⚠ More items may not have loaded yet.</span>
+        <button id="loadAllBtnModal">Load all</button>
+      </div>
       <div id="gridModalFooterMsgs">
         <span id="modalMsg"></span>
-        <div id="modalIncompleteBanner">
-          <span>⚠ Only the items Amazon has loaded so far are shown — there may be more.</span>
-          <button id="loadAllBtnModal">Load all</button>
-        </div>
       </div>
       <div id="gridModalFooterActions">
         <button id="undoBtnModal" class="historyBtn" title="Undo" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"/></svg></button>
@@ -829,7 +840,7 @@
     </button>
   </div>
   <div id="incompleteBanner">
-    <span>⚠ Only the items Amazon has loaded so far are shown — there may be more.</span>
+    <span title="Amazon loads Saved for later in batches as you scroll down the cart. Load all scrolls the page for you to load the rest.">⚠ More items may not have loaded yet.</span>
     <button id="loadAllBtnInline">Load all</button>
   </div>
   <div id="status"></div>

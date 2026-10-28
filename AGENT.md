@@ -136,7 +136,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
     Clicking a row (outside its title link) opens `openPriceRuleDialog`
     for it.
     "On the page" = in `order`, so not-yet-lazy-loaded items count as
-    off-page — hence the footer's own Load all banner. Rows are in the
+    off-page — hence the footer's own Load all banner, shown only while
+    some target's item is off-page (`body.targets-off-page`). Rows are in the
     user's order (drag; `moveTarget`), kept as `rank` on each rule so it
     syncs; rules without one sort last. Its filter (`targetFilter`: status,
     `label:<id>` for a target's own label, `item:<id>` for a general label
