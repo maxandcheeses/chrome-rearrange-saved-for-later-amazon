@@ -15,6 +15,7 @@ let itemsByKey = new Map();
 let cartItems = []; // items currently in the cart, eligible to be saved for later
 let savingCartKey = null; // key currently being moved from cart -> saved, if any
 let deletingKey = null; // key currently being deleted from saved-for-later, if any
+let addingToCartKey = null; // key currently being added to the cart, if any
 let activeTabId = null;
 let statusPollHandle = null;
 let watchHandle = null;
@@ -183,9 +184,29 @@ function renderList() {
     listEl.appendChild(li);
   });
   appendFilterEmptyNote(listEl);
+  holdListHeight(listEl);
   attachDragHandlers();
   renderTileGrid();
   renderPriceTargets();
+}
+
+// The list sizes to its items, so filtering down to a few would shrink the
+// popup. While filtered, it keeps the height it last had unfiltered.
+let unfilteredListHeight = 0;
+function rememberUnfilteredListHeight() {
+  const listEl = $('list');
+  // Hidden (e.g. on the Price targets tab) it measures 0, so keep the last.
+  // clientHeight, not offsetHeight: min-height doesn't include the border.
+  if (labelFilter === 'all' && listEl.offsetParent) unfilteredListHeight = listEl.clientHeight;
+}
+
+function holdListHeight(listEl) {
+  if (labelFilter === 'all') {
+    listEl.style.minHeight = '';
+    rememberUnfilteredListHeight();
+  } else {
+    listEl.style.minHeight = `${unfilteredListHeight}px`;
+  }
 }
 
 // Tile-based view shown alongside the plain list (toggled via body.grid-mode
@@ -294,6 +315,7 @@ function setTableView(on, persist = true) {
 // thumbnail or intercepts drags. Once a preview has been shown, moving onto
 // another thumbnail within IMAGE_PREVIEW_WARM_MS shows its preview
 // immediately, so scanning across items doesn't pay the delay every time.
+// The item's price, when known, is shown under the enlarged image.
 const IMAGE_PREVIEW_DELAY_MS = 500;
 const IMAGE_PREVIEW_WARM_MS = 400;
 const PREVIEW_IMG_SELECTOR = '#list img, #tileGrid img, #cartList img, .targetsList img';
@@ -337,9 +359,22 @@ function showImagePreview(img) {
     preview.style.left = `${left}px`;
     preview.style.top = `${top}px`;
   };
+  preview.querySelector('.preview-price').textContent = previewPriceText(img);
   previewImg.onload = place;
   previewImg.src = img.currentSrc || img.src;
   if (previewImg.complete) place();
+}
+
+// The displayed price of the item a thumbnail belongs to, or '' if none is
+// known (cart rows aren't priced). Price targets rows carry their target id,
+// so off-page targets fall back to the item's remembered price.
+function previewPriceText(img) {
+  const li = img.closest('li');
+  if (!li) return '';
+  const item = li.dataset.id && priceRules.has(li.dataset.id)
+    ? targetItem(li.dataset.id)
+    : li.dataset.key && itemsByKey.get(li.dataset.key);
+  return (item && item.priceText) || '';
 }
 
 function setupImagePreview() {
@@ -441,6 +476,8 @@ function setGridMode(on) {
   gridMode = on;
   document.body.classList.toggle('grid-mode', on);
   matchTargetsFooterHeight();
+  applyPendingScroll();
+  saveViewState({ gridMode: on });
 }
 
 // Chrome caps popups at 800x600 screen pixels, so at a page zoom above 100%
@@ -537,9 +574,9 @@ function moveKeyToPosition(key, newPos) {
 
 // ---- Undo / redo ----
 
-// Snapshots of the arrangement and labels, taken before each change. Lives
-// only in popup memory (gone when the popup closes) and is cleared once an
-// Apply completes, since the page's real order has moved on by then.
+// Snapshots of the arrangement and labels, taken before each change. Kept by
+// the page until it reloads (see "View memory"), and cleared once an Apply
+// completes, since the page's real order has moved on by then.
 const HISTORY_LIMIT = 100;
 let undoStack = [];
 let redoStack = [];
@@ -612,6 +649,7 @@ function updateHistoryButtons() {
   $('undoBtnModal').disabled = noUndo;
   $('redoBtn').disabled = noRedo;
   $('redoBtnModal').disabled = noRedo;
+  saveViewState({ history: { undo: undoStack, redo: redoStack } });
 }
 
 // ---- Labels ----
@@ -1271,6 +1309,7 @@ const CHECK_ICON_PATH = 'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z
 const PLUS_ICON_PATH = 'M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z'; // "plus"
 const PENCIL_ICON_PATH = 'M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z'; // "pencil"
 const TAG_ICON_PATH = 'M21.41,11.58L12.41,2.58C12.05,2.22 11.55,2 11,2H4C2.9,2 2,2.9 2,4V11C2,11.55 2.22,12.05 2.59,12.42L11.59,21.42C11.95,21.78 12.45,22 13,22C13.55,22 14.05,21.78 14.41,21.41L21.41,14.41C21.78,14.05 22,13.55 22,13C22,12.45 21.77,11.94 21.41,11.58M13,20L4,11V4H11V3.99L20,12.99L13,20M6.5,5A1.5,1.5 0 0,1 8,6.5A1.5,1.5 0 0,1 6.5,8A1.5,1.5 0 0,1 5,6.5A1.5,1.5 0 0,1 6.5,5Z'; // "tag-outline"
+const CART_PLUS_ICON_PATH = 'M11,9H13V6H16V4H13V1H11V4H8V6H11M7,18A2,2 0 0,0 5,20A2,2 0 0,0 7,22A2,2 0 0,0 9,20A2,2 0 0,0 7,18M17,18A2,2 0 0,0 15,20A2,2 0 0,0 17,22A2,2 0 0,0 19,20A2,2 0 0,0 17,18M7.17,14.75L7.2,14.63L8.1,13H15.55C16.3,13 16.96,12.59 17.3,11.97L21.16,4.96L19.42,4H19.41L18.31,6L15.55,11H8.53L8.4,10.73L6.16,6L5.21,4L4.27,2H1V4H3L6.6,11.59L5.24,14.04C5.09,14.32 5,14.65 5,15A2,2 0 0,0 7,17H19V15H7.42C7.29,15 7.17,14.89 7.17,14.75Z'; // "cart-plus"
 const CHART_ICON_PATH = 'M16,11.78L20.24,4.45L21.97,5.45L16.74,14.5L10.23,10.75L5.46,19H22V21H2V3H4V17.54L9.66,7.75L16.17,11.5Z'; // "chart-line"
 
 // "Open product page" for the right-click menus, or null without a URL.
@@ -1568,11 +1607,13 @@ function setActiveTab(tab) {
   if (activeTabId) sendToTab(activeTabId, { type: 'SFL_SET_LAST_TAB', tab }).catch(() => {});
   closeContextMenu();
   renderPriceTargets();
-  if (tab !== 'targets') return;
-  const list = $('targetsList');
-  list.style.height = '';
-  list.style.maxHeight = 'none';
-  list.style.height = `${Math.max(60, list.offsetHeight + height - document.body.scrollHeight)}px`;
+  if (tab === 'targets') {
+    const list = $('targetsList');
+    list.style.height = '';
+    list.style.maxHeight = 'none';
+    list.style.height = `${Math.max(60, list.offsetHeight + height - document.body.scrollHeight)}px`;
+  }
+  applyPendingScroll();
 }
 
 function appendFilterEmptyNote(container) {
@@ -1678,11 +1719,13 @@ function renderLabelFilter() {
 }
 
 function setLabelFilter(value) {
+  rememberUnfilteredListHeight();
   labelFilter = value;
   showInBetween = false;
   // A hidden item staying selected would get dragged along unseen.
   selectedKeys.clear();
   renderList();
+  saveFilters();
 }
 
 // ---- Context menu ----
@@ -1758,7 +1801,7 @@ function openContextMenu(entries, x, y) {
 }
 
 function openItemMenu(key, x, y) {
-  if (applyInProgress || deletingKey) return;
+  if (applyInProgress || deletingKey || addingToCartKey) return;
   const current = itemLabelIds(key);
   const entries = [{ heading: 'Labels', closable: true }];
   // Labels a price target uses are applied by the target, not by hand.
@@ -1788,11 +1831,15 @@ function openItemMenu(key, x, y) {
   entries.push({ label: itemTargetIds(key).length ? 'Add another price target…' : 'Label at a target price…', icon: TAG_ICON_PATH, onClick: () => openPriceRuleDialog(key) });
   entries.push('sep');
   const item = itemsByKey.get(key);
+  const itemEntriesStart = entries.length;
+  if (/^[A-Z0-9]{10}$/.test(key)) {
+    entries.push({ label: 'Add to cart (keep in Saved for later)', icon: CART_PLUS_ICON_PATH, onClick: () => addSavedItemToCart(key) });
+  }
   const product = openProductEntry(item && item.url);
   if (product) entries.push(product);
   const history = camelEntry(key, item && item.url);
   if (history) entries.push(history);
-  if (product || history) entries.push('sep');
+  if (entries.length > itemEntriesStart) entries.push('sep');
   entries.push({ label: 'Delete from Saved for later…', icon: TRASH_ICON_PATH, danger: true, onClick: () => confirmDeleteItem(key) });
   openContextMenu(entries, x, y);
 }
@@ -1825,6 +1872,26 @@ async function deleteSavedItem(key) {
   }
   deletingKey = null;
   await loadItems();
+}
+
+// Adds a copy to the cart without Amazon's "Move to cart", which would
+// take the item out of Saved for later (see addSavedItemToCart in
+// content.js). Outside undo/redo; it's undone by removing it from the cart.
+async function addSavedItemToCart(key) {
+  if (!activeTabId || addingToCartKey || deletingKey || applyInProgress) return;
+  addingToCartKey = key;
+  setStatus('Adding to cart…');
+  try {
+    const res = await sendToTab(activeTabId, { type: 'SFL_ADD_TO_CART', key });
+    if (res && res.ok) {
+      setStatus('Added to cart — it stays in Saved for later. Refresh the page to see it in your cart.');
+    } else {
+      setStatus(res && res.error ? res.error : 'Could not add that item to the cart.', true);
+    }
+  } catch (err) {
+    setStatus(`Could not reach the page: ${err.message}`, true);
+  }
+  addingToCartKey = null;
 }
 
 function onLabelFilterChange(select) {
@@ -2208,13 +2275,106 @@ let lastTabRestored = false;
 async function restoreLastTab(tabId) {
   if (lastTabRestored) return;
   lastTabRestored = true;
+  await restoreViewState(tabId);
   let res;
   try {
     res = await sendToTab(tabId, { type: 'SFL_GET_LAST_TAB' });
   } catch (err) {
-    return;
+    res = null;
   }
   if (res && res.tab === 'targets' && priceRules.size) setActiveTab('targets');
+  applyPendingScroll();
+}
+
+// ---- View memory ----
+// The popup's view — filters, selection, grid view, undo/redo history and
+// scroll positions — is remembered by the page (until it reloads), like the
+// last tab, and restored once per popup opening (restoreLastTab). Saved as
+// it changes, since there's no reliable moment to save on close; nothing is
+// saved until the restore has run, so start-up rendering can't overwrite it.
+// A scroller that's hidden at restore (e.g. the grid while in the compact
+// view) can't be scrolled, so its position waits in pendingScroll until
+// setGridMode/setActiveTab shows it.
+const SCROLLER_IDS = ['body', 'list', 'tileGrid', 'targetsList', 'targetsPanelModal'];
+let viewRestored = false;
+let savedScroll = {};
+let pendingScroll = {};
+let scrollSaveTimer = null;
+
+function saveViewState(state) {
+  if (!viewRestored || !activeTabId) return;
+  sendToTab(activeTabId, { type: 'SFL_SET_VIEW_STATE', state }).catch(() => {});
+}
+
+function saveFilters() {
+  saveViewState({
+    filters: { label: labelFilter, target: targetFilter, inBetween: showInBetween },
+    selection: { keys: [...selectedKeys], anchor: selectionAnchor }
+  });
+}
+
+async function restoreViewState(tabId) {
+  let res;
+  try {
+    res = await sendToTab(tabId, { type: 'SFL_GET_VIEW_STATE' });
+  } catch (err) {
+    res = null;
+  }
+  const state = (res && res.state) || {};
+  const f = state.filters;
+  if (f) {
+    // Measured before filtering, so the filtered list keeps the full height.
+    rememberUnfilteredListHeight();
+    // A label deleted since falls back to all; renderTargetFilter checks the
+    // target filter the same way.
+    labelFilter = f.label === 'none' || getLabel(f.label) ? f.label : 'all';
+    showInBetween = labelFilter !== 'all' && !!f.inBetween;
+    targetFilter = f.target || 'all';
+  }
+  if (state.selection) {
+    const live = new Set(order);
+    selectedKeys = new Set(state.selection.keys.filter((k) => live.has(k)));
+    selectionAnchor = live.has(state.selection.anchor) ? state.selection.anchor : null;
+  }
+  if (state.history) {
+    // Snapshots are reconciled with the items now loaded when they're used
+    // (restoreState), so steps from before items changed still apply.
+    undoStack = state.history.undo;
+    redoStack = state.history.redo;
+  }
+  renderList();
+  renderSelection();
+  updateHistoryButtons();
+  if (typeof state.gridMode === 'boolean' && state.gridMode !== gridMode) setGridMode(state.gridMode);
+  savedScroll = { ...(state.scroll || {}) };
+  pendingScroll = { ...savedScroll };
+  viewRestored = true;
+}
+
+function scrollerEl(id) {
+  return id === 'body' ? document.body : $(id);
+}
+
+function applyPendingScroll() {
+  Object.keys(pendingScroll).forEach((id) => {
+    const el = scrollerEl(id);
+    if (!el || !el.clientHeight) return;
+    el.scrollTop = pendingScroll[id];
+    delete pendingScroll[id];
+  });
+}
+
+function setupScrollMemory() {
+  SCROLLER_IDS.forEach((id) => {
+    const el = scrollerEl(id);
+    el.addEventListener('scroll', () => {
+      if (!viewRestored) return;
+      delete pendingScroll[id];
+      savedScroll[id] = el.scrollTop;
+      clearTimeout(scrollSaveTimer);
+      scrollSaveTimer = setTimeout(() => saveViewState({ scroll: { ...savedScroll } }), 200);
+    });
+  });
 }
 
 async function applyPendingOrder(tabId) {
@@ -2315,6 +2475,7 @@ function renderSelection() {
   document.querySelectorAll('#list li[data-key], #tileGrid li[data-key]').forEach((li) => {
     li.classList.toggle('selected', selectedKeys.has(li.dataset.key));
   });
+  saveViewState({ selection: { keys: [...selectedKeys], anchor: selectionAnchor } });
 }
 
 // The keys a drag starting on `key` should move: the whole selection (in
@@ -2930,6 +3091,8 @@ function setSyncEnabled(enabled) {
 // status: { error, at, notice } as recorded by background.js, or
 // { notice: 'deletedHere' } right after deleting from this popup.
 function renderSyncStatus(status) {
+  lastSyncStatus = status;
+  renderSyncBadges();
   const el = $('syncStatus');
   el.classList.remove('sync-error');
   el.textContent = '';
@@ -2947,6 +3110,32 @@ function renderSyncStatus(status) {
   } else if (status.at && $('syncEnabled').checked) {
     el.textContent = `Last synced ${new Date(status.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
   }
+}
+
+// The header's sync note in both views: when sync last ran, or that it
+// failed, while sync is on here. Clicking it opens the settings, where the
+// full status and Sync now are.
+let lastSyncStatus = null;
+function renderSyncBadges() {
+  const status = lastSyncStatus;
+  const enabled = $('syncEnabled').checked;
+  document.querySelectorAll('.syncBadge').forEach((el) => {
+    el.classList.remove('sync-error');
+    el.hidden = !enabled || !status || !(status.error || status.at);
+    if (el.hidden) return;
+    if (status.error) {
+      el.textContent = '⚠ Sync failed';
+      el.title = 'Sync failed — click for details';
+      el.classList.add('sync-error');
+    } else {
+      const at = new Date(status.at);
+      const today = at.toDateString() === new Date().toDateString();
+      el.textContent = `Synced ${today
+        ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        : at.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+      el.title = `Last synced ${at.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} — click for sync settings`;
+    }
+  });
 }
 
 async function syncNow() {
@@ -3043,6 +3232,7 @@ function setupSync() {
   });
   $('syncEnabled').addEventListener('change', onSyncToggle);
   $('syncNowBtn').addEventListener('click', syncNow);
+  document.querySelectorAll('.syncBadge').forEach((el) => el.addEventListener('click', () => toggleSettingsPanel(true)));
   $('deleteSyncBtn').addEventListener('click', confirmDeleteSynced);
   // Pick up what background.js pulls in from sync while the popup is open.
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -3052,6 +3242,7 @@ function setupSync() {
       const enabled = !!(changes[SYNC_FLAG_KEY].newValue && changes[SYNC_FLAG_KEY].newValue.enabled);
       $('syncEnabled').checked = enabled;
       $('syncNowBtn').disabled = !enabled;
+      renderSyncBadges();
     }
     if (changes[SYNC_STATUS_KEY] && changes[SYNC_STATUS_KEY].newValue) renderSyncStatus(changes[SYNC_STATUS_KEY].newValue);
     const settings = changes[STORAGE_KEY] && changes[STORAGE_KEY].newValue;
@@ -3071,6 +3262,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadItems(true);
   setFooterMsg('💡 Try Grid view for reordering long lists faster.');
   setupImagePreview();
+  setupScrollMemory();
   setupTooltips();
 
   $('refreshBtn').addEventListener('click', () => {
@@ -3090,6 +3282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (onFilterAction(select, targetFilter, true)) return;
     targetFilter = select.value;
     renderPriceTargets();
+    saveFilters();
   }));
   $('closeGridBtn').addEventListener('click', () => {
     // With Extended set as the default view there's no plain popup to fall
@@ -3127,7 +3320,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('closeSettingsBtn').addEventListener('click', () => toggleSettingsPanel(false));
   $('labelFilter').addEventListener('change', (e) => onLabelFilterChange(e.target));
   $('labelFilterModal').addEventListener('change', (e) => onLabelFilterChange(e.target));
-  const toggleInBetween = () => { showInBetween = !showInBetween; renderList(); };
+  const toggleInBetween = () => { showInBetween = !showInBetween; renderList(); saveFilters(); };
   $('inBetweenBtn').addEventListener('click', toggleInBetween);
   $('inBetweenBtnModal').addEventListener('click', toggleInBetween);
   $('dialogBackdrop').addEventListener('click', dismissDialog);

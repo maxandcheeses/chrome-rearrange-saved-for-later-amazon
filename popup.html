@@ -51,6 +51,17 @@
     color: var(--text); box-shadow: none; border-radius: 999px; flex-shrink: 0;
   }
   #headerActions button:hover { background: var(--btn-hover); }
+  /* Last sync time beside the header buttons (renderSyncBadges). */
+  .syncBadge {
+    background: none; border: none; box-shadow: none; padding: 0 2px; font-size: 11px;
+    color: var(--text-faint); white-space: nowrap; cursor: pointer; align-self: center;
+  }
+  .syncBadge:hover { color: var(--text); text-decoration: underline; }
+  .syncBadge.sync-error { color: var(--danger-text); }
+  .syncBadge[hidden] { display: none !important; }
+  #headerActions button.syncBadge { width: auto; height: auto; border: none; background: none; border-radius: 0; }
+  #gridModalHeader .syncBadge { margin-left: auto; }
+  #gridModalHeader .syncBadge:not([hidden]) + #tableViewBtn { margin-left: 0; }
   #msg { color: var(--text-muted); font-size: 12px; margin: 5px 0; }
   /* Shown only while at least one price target exists (renderPriceTargets). */
   .tabBar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 4px 0 6px; }
@@ -658,12 +669,17 @@
     display: block; object-fit: contain;
     max-width: min(320px, calc(100vw - 34px)); max-height: min(320px, calc(100vh - 34px));
   }
+  #imagePreview .preview-price {
+    margin-top: 6px; text-align: center; font-size: 15px; font-weight: 700; color: var(--text);
+  }
+  #imagePreview .preview-price:empty { display: none; }
 </style>
 </head>
 <body>
   <div id="header">
     <h3>Reorder saved for later</h3>
     <div id="headerActions">
+      <button type="button" class="syncBadge" hidden></button>
       <button id="gridViewBtn" title="Expand into a tile view for reordering with less scrolling">⛶</button>
       <button id="settingsBtn" title="Settings">⚙</button>
     </div>
@@ -701,6 +717,7 @@
         <button type="button" id="inBetweenBtnModal" class="labelIconBtn inBetweenBtn" title="Show interposing items" aria-label="Show interposing items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15,2A7,7 0 0,1 22,9C22,11.71 20.46,14.05 18.22,15.22C17.55,16.5 16.5,17.55 15.22,18.22C14.05,20.46 11.71,22 9,22A7,7 0 0,1 2,15C2,12.29 3.54,9.95 5.78,8.78C6.45,7.5 7.5,6.45 8.78,5.78C9.95,3.54 12.29,2 15,2M12,19A7,7 0 0,1 5,12C4.37,12.84 4,13.87 4,15A5,5 0 0,0 9,20C10.13,20 11.16,19.63 12,19M15,16A7,7 0 0,1 8,9H8C7.37,9.84 7,10.87 7,12A5,5 0 0,0 12,17C13.13,17 14.16,16.63 15,16V16M15,4C13.87,4 12.84,4.37 12,5V5A7,7 0 0,1 19,12H19C19.63,11.16 20,10.13 20,9A5,5 0 0,0 15,4M10,9A5,5 0 0,0 15,14C15.6,14 16.17,13.9 16.7,13.7C16.9,13.17 17,12.6 17,12A5,5 0 0,0 12,7C11.4,7 10.83,7.1 10.3,7.3C10.1,7.83 10,8.4 10,9Z"/></svg></button>
         <select class="targetsFilter" title="Show only price targets that match" aria-label="Filter price targets"></select>
       </div>
+      <button type="button" class="syncBadge" hidden></button>
       <button type="button" id="tableViewBtn" title="Switch to table view">☰</button>
       <button type="button" id="settingsBtnModal" title="Settings">⚙</button>
       <button type="button" id="closeGridBtn" title="Close grid view">✕</button>
@@ -837,7 +854,7 @@
     <div id="dialogActions"></div>
   </div>
 
-  <div id="imagePreview"><img alt=""></div>
+  <div id="imagePreview"><img alt=""><div class="preview-price"></div></div>
   <div id="tooltip" role="tooltip"></div>
   <div id="dragGhost" aria-hidden="true"></div>
 

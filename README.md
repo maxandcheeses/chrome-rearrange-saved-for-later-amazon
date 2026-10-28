@@ -4,6 +4,8 @@ A Chrome extension that lets you drag-and-drop (or type a position number)
 to reorder the items in your Amazon "Saved for later" list, then applies
 that order for real on amazon.com.
 
+**[Get it on the Chrome Web Store](https://chromewebstore.google.com/detail/reorder-saved-for-later-a/adddgnonjdifiaepengnjopamlomjmnh)**
+
 No data is ever collected, shared, or sent to the developer or anyone
 else. Everything happens and is stored locally in your browser — unless
 you turn on the optional sync, which stores your settings, labels and
@@ -23,6 +25,10 @@ them. This extension works around that by driving Amazon's own "Move to
 cart" / "Save for later" controls to bump items into the position you want.
 
 ## Install
+
+Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/reorder-saved-for-later-a/adddgnonjdifiaepengnjopamlomjmnh).
+
+To run it from source instead:
 
 1. Clone or download this repository.
 2. Open `chrome://extensions` in Chrome.
@@ -70,7 +76,13 @@ save your edits, or close it (✕, click outside, or Escape) to discard them.
 Labels are saved locally in your browser and stick to items across
 sessions.
 
-The right-click menu also has **Open product page** and **Price history on
+The right-click menu also has **Add to cart (keep in Saved for later)**,
+which puts a copy of the item in your cart while it stays where it is in
+your list — unlike Amazon's "Move to cart". It submits the product page's
+"Add to Cart" in the background, so refresh the cart page to see it there;
+items that need an option picked (size, color…) or have no Add to Cart
+button on their product page can't be added this way. It also has
+**Open product page** and **Price history on
 camelcamelcamel** (both open in a background tab; nothing is sent to
 camelcamelcamel unless you click it), and **Delete from Saved for later…**,
 which removes the item from your list on Amazon (after a confirmation) by
@@ -149,7 +161,8 @@ Click the ⚙ button to adjust:
   and link; thumbnails aren't synced and reappear once the item is seen
   on the cart page). Past that, everything keeps working on each computer
   but stops syncing. Your in-progress
-  arrangement is never synced.
+  arrangement is never synced. While sync is on, the popup's header shows
+  when it last synced (or that it failed); click it to open these settings.
   - **Sync now** syncs right away instead of waiting for the next change.
   - **Delete synced data…** removes your settings, labels and price targets from your
     Chrome account and turns sync off on all your computers. Each computer

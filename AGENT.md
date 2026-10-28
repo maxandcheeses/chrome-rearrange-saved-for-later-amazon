@@ -78,7 +78,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   transient pending action. "Show interposing items" (the toggle next to
   the filter) additionally shows, dimmed, the non-matching items between
   the first and last match; it's display-only and resets whenever the
-  filter changes. The label editor ("Edit labels…") is transactional:
+  filter changes. While filtered, `#list` keeps the height it last had
+  unfiltered (`holdListHeight`), so the popup doesn't shrink to fit a few
+  matches. The label editor ("Edit labels…") is transactional:
   `labelEditBefore` holds the state from when it opened, edits preview
   live but skip `saveLabels` and `recordChange`, Done saves them as a
   single undo step (`finishLabelEdit`), and any other dismissal (✕,
@@ -159,8 +161,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
 - Undo/redo (`popup.js`, "Undo / redo" section) — snapshots of the
   arrangement and labels taken before each change (`recordChange`), bound
   to the toolbar buttons and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y
-  (ignored while typing in a field or with a dialog open). Popup memory
-  only, and cleared after a successful Apply since the page's real order
+  (ignored while typing in a field or with a dialog open). Kept by the
+  page until it reloads (view memory, below), and cleared after a successful Apply since the page's real order
   has moved on. `restoreState` reconciles against the items currently
   loaded: unknown items keep their place at the end, vanished ones drop.
 - Multi-select (`popup.js`, "Multi-select" section) — platform-standard
@@ -168,8 +170,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
   Shift+click selects the range from the anchor (⌘/Ctrl+Shift adds it to
   the selection), plain click highlights just that item, and a click on
   empty list space or Escape clears it; dragging any selected item moves the whole
-  selection as one block. Display-only, never persisted, and pruned when
-  the label filter hides selected items.
+  selection as one block. Display-only, kept until the page reloads (view
+  memory, below), and pruned when the label filter hides selected items.
 - Custom tooltips (`setupTooltips`) replace Chrome's slow native ones for
   every element with a `title`; code keeps setting `.title` as usual.
 - Sync (`storage.js`, plus `background.js` and the "Sync" section of
@@ -182,7 +184,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   quota); each chunk carries its save's `updatedAt` so half-arrived saves
   are ignored. Turning sync on with differing labels on both sides asks
   which to keep. Sync errors (quota) land in `sfl_sync_status` and show
-  under the toggle, along with the last sync time. "Sync now" sends
+  under the toggle, along with the last sync time — also shown, while
+  sync is on, as a `.syncBadge` in both views' headers
+  (`renderSyncBadges`, fed by `renderSyncStatus`; click opens settings). "Sync now" sends
   `SFL_SYNC_NOW` and waits for the reconcile's result. "Delete synced
   data…" turns sync off here, then `deleteSynced` writes an
   `sfl_sync_deleted` marker *before* removing the rest. Any computer whose
@@ -217,11 +221,26 @@ Chrome sync account. Keep any privacy wording consistent with that.
   order). Communicates with `popup.js` over `chrome.runtime.onMessage`
   using message types prefixed `SFL_*` (`SFL_PING`, `SFL_GET_ITEMS`,
   `SFL_GET_LOAD_STATUS`, `SFL_GET_STATUS`, `SFL_APPLY_ORDER`,
-  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`, `SFL_DELETE_ITEM`,
-  `SFL_SET_LAST_TAB`, `SFL_GET_LAST_TAB`). The last two hold which popup
+  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`, `SFL_DELETE_ITEM`, `SFL_ADD_TO_CART`,
+  `SFL_SET_LAST_TAB`, `SFL_GET_LAST_TAB`, `SFL_SET_VIEW_STATE`,
+  `SFL_GET_VIEW_STATE`).
+  `SFL_SET_LAST_TAB`/`SFL_GET_LAST_TAB` hold which popup
   tab (Saved for later / Price targets) the user was on, in content-script
   memory like `pendingOrder`, so reopening the popup returns there until
   the page reloads (`restoreLastTab`, once per popup opening).
+  `SFL_SET_VIEW_STATE` / `SFL_GET_VIEW_STATE` do the same for the rest of
+  the popup's view ("View memory" in `popup.js`): label/target filters and
+  "Show interposing items", the selection, grid vs compact view, undo/redo
+  history, and scroll positions (each scroller in `SCROLLER_IDS`). The
+  popup saves each part as it changes (`saveViewState`; a popup can't
+  save on close, and scrolling is debounced) and `restoreViewState` puts
+  them back before the last tab, once per opening. Nothing is saved until
+  that restore has run, so start-up rendering can't overwrite it. Labels
+  deleted or items gone since are dropped on restore. A scroller hidden at
+  restore (the grid in compact view, a tab not shown) keeps its position
+  in `pendingScroll` until `setGridMode`/`setActiveTab` shows it. Settings
+  that should outlast a reload (tile size, table view, default view,
+  theme) stay in `sfl_settings` instead.
   `SFL_DELETE_ITEM` (from the item right-click menu, `openItemMenu` in
   `popup.js`) clicks Amazon's "Delete" control on a saved row
   (`isDeleteElement` — matches whole control text, not substrings, since
@@ -229,6 +248,17 @@ Chrome sync account. Keep any privacy wording consistent with that.
   row to vanish. It's permanent on Amazon, so it's confirmed first and
   sits outside undo/redo; the popup just rescans and `mergeItems` drops
   the key.
+  `SFL_ADD_TO_CART` (item menu, "Add to cart (keep in Saved for later)",
+  `addSavedItemToCart` in both files) puts an item in the cart *without*
+  "Move to cart", which would take it out of Saved for later: it fetches
+  `/dp/<ASIN>`, submits that page's `form#addToCart` to its Add to Cart
+  button's `formaction` (the form's own `action` 404s), minus `isBuyNow`
+  and plus `submit.add-to-cart`, with the user's own session, then re-fetches
+  the cart to confirm (`#sc-active-cart [data-asin]` or `getAllCartRows`
+  on the fetched document). The live page isn't updated until reload.
+  ASIN keys only; refused if the item is already in the cart. Caveat: an
+  Apply that bumps such an item after a reload moves the cart line back
+  to Saved for later, since a bump's "Save for later" acts on it.
 - `content.css` — minimal styling injected alongside the content script.
 - `icons/` — extension icons at 16/32/48/128px, generated from a single
   source image via `sips`. Regenerate all four sizes together if the icon

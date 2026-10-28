@@ -34,7 +34,7 @@ FEATURES
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
 • Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Reordering while filtered still keeps your whole list in order.
 • Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. A Price targets tab lists every target with how far each price is from it (checked while the popup is open on your cart)
-• Right-click an item to open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
+• Right-click an item to add it to your cart while keeping it in Saved for later, open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
 • Your in-progress arrangement survives closing the popup, until you reload or leave the page
 • Optional sync: keep your settings, labels and price targets in sync across your computers through your own Chrome account. Off by default; you can sync on demand or delete the synced copy at any time.

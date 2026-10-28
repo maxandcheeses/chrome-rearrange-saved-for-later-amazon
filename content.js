@@ -35,6 +35,12 @@
   // it should last exactly as long as this page does.
   let lastPopupTab = 'saved';
 
+  // The rest of the popup's view (filters, scroll positions, selection,
+  // grid view, undo/redo history — see "View memory" in popup.js), kept the
+  // same way so reopening the popup picks up where it left off until a
+  // reload. Each SFL_SET_VIEW_STATE replaces the top-level fields it sends.
+  let popupViewState = {};
+
   // Set by SFL_CANCEL_APPLY while an apply is running; checked between bumps
   // so an in-flight bump always finishes cleanly rather than being torn off
   // mid-DOM-manipulation (which could strand an item in the cart).
@@ -176,8 +182,8 @@
   // a "Save for later" action link (rather than "Move to cart"), which is
   // specific enough to actual cart items that it doesn't pick up unrelated
   // page sections.
-  function getAllCartRows() {
-    const actionLinks = Array.from(document.body.querySelectorAll(ACTION_SELECTOR)).filter(
+  function getAllCartRows(root = document.body) {
+    const actionLinks = Array.from(root.querySelectorAll(ACTION_SELECTOR)).filter(
       isSaveForLaterElement
     );
     const rows = [];
@@ -424,6 +430,53 @@
     if (!gone) {
       throw new Error(`Clicked "Delete" for "${entry.titleText}" but it's still in Saved for later.`);
     }
+  }
+
+  // Adds a copy of a saved item to the cart while leaving it where it is in
+  // Saved for later. Amazon's own "Move to cart" takes it out of the list,
+  // so instead this submits the item's product-page "Add to Cart" form in
+  // the background (same origin, so the user's session comes along), then
+  // re-fetches the cart to check it landed. The page itself isn't updated
+  // until it's reloaded.
+  async function addSavedItemToCart(key) {
+    if (!/^[A-Z0-9]{10}$/.test(key)) throw new Error('This item has no product ID, so it can only be moved to the cart.');
+    scanCartItems();
+    if (cartItemsByKey.has(key)) throw new Error('That item is already in your cart.');
+
+    const productHtml = await fetchText(`${location.origin}/dp/${key}`);
+    const productDoc = new DOMParser().parseFromString(productHtml, 'text/html');
+    const form = productDoc.querySelector('form#addToCart');
+    const button = form && form.querySelector('[name="submit.add-to-cart"]');
+    if (!button) {
+      throw new Error("Amazon shows no \"Add to Cart\" button for this item right now (it may need an option picked on its product page, or be unavailable).");
+    }
+
+    const body = new URLSearchParams();
+    for (const [name, value] of new FormData(form)) {
+      if (typeof value === 'string') body.append(name, value);
+    }
+    // Only the clicked submit button is sent with a form, and this is an
+    // add to cart, not "Buy now".
+    body.delete('isBuyNow');
+    body.append(button.name, button.value || '');
+    // The button's formaction (/cart/add-to-cart/…) overrides the form's own
+    // action, which 404s for an add to cart.
+    const action = button.getAttribute('formaction') || form.getAttribute('action') || '';
+    const res = await fetch(new URL(action, `${location.origin}/dp/${key}`), {
+      method: 'POST', body, credentials: 'include'
+    });
+    if (!res.ok) throw new Error(`Amazon refused the request (HTTP ${res.status}).`);
+
+    const cartDoc = new DOMParser().parseFromString(await fetchText(`${location.origin}/gp/cart/view.html`), 'text/html');
+    const inCart = cartDoc.querySelector(`#sc-active-cart [data-asin="${key}"]`) ||
+      getAllCartRows(cartDoc.body).some((r) => extractAsin(r) === key);
+    if (!inCart) throw new Error("Amazon didn't add the item to your cart. Try its product page instead.");
+  }
+
+  async function fetchText(url) {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error(`Couldn't load ${new URL(url).pathname} (HTTP ${res.status}).`);
+    return res.text();
   }
 
   function looksLikeCartPage() {
@@ -804,6 +857,22 @@
       return true;
     }
 
+    if (msg.type === 'SFL_ADD_TO_CART') {
+      if (status.running) {
+        sendResponse({ ok: false, error: 'A reorder is in progress.' });
+        return;
+      }
+      (async () => {
+        try {
+          await addSavedItemToCart(msg.key);
+          sendResponse({ ok: true });
+        } catch (err) {
+          sendResponse({ ok: false, error: err.message });
+        }
+      })();
+      return true;
+    }
+
     if (msg.type === 'SFL_GET_LOAD_STATUS') {
       sendResponse({ loadStatus });
       return;
@@ -859,6 +928,17 @@
 
     if (msg.type === 'SFL_GET_LAST_TAB') {
       sendResponse({ tab: lastPopupTab });
+      return;
+    }
+
+    if (msg.type === 'SFL_SET_VIEW_STATE') {
+      popupViewState = { ...popupViewState, ...msg.state };
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === 'SFL_GET_VIEW_STATE') {
+      sendResponse({ state: popupViewState });
       return;
     }
   });
