@@ -28,6 +28,14 @@ Chrome sync account. Keep any privacy wording consistent with that.
   for ~15s, since the saved section can render late). Must be listed in
   the zip step of `.github/workflows/build.yml` along with the other
   runtime files.
+- `theme.js` — loaded in popup.html's `<head>` so the Theme setting (auto /
+  light / dark) is applied before first paint: it sets `data-theme` to
+  "light" or "dark" on `<html>`, caching the choice in `localStorage` since
+  `chrome.storage` is async, and follows the system while on Auto. All
+  popup colors are CSS custom properties on `:root`, redefined under
+  `:root[data-theme="dark"]` (plus dark `.label-cN` variants) — use the
+  tokens, not hex values, for new colors. Must be listed in the zip step
+  of `.github/workflows/build.yml`.
 - `popup.html` / `popup.js` — the toolbar popup UI. Renders the saved-item
   list, handles drag-and-drop and numeric-position reordering, polls the
   content script for live item snapshots and apply-progress, and stores
@@ -78,8 +86,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
   snapshot (`discardLabelEdit`). Closing the popup mid-edit also loses
   them, since nothing was saved.
   Right-click menus (`openItemMenu` for saved items, `openTargetMenu` for
-  Price targets rows; built by `openContextMenu`, whose entries can carry an
-  SVG `icon`) also offer "Open product page" (`openProductEntry`) and
+  Price targets rows; built by `openContextMenu`, whose entries carry a leading
+  SVG `icon` or a `checked` ✓, plus an optional label-color `swatch`) also offer "Open product page" (`openProductEntry`) and
   "Price history on camelcamelcamel" (`camelEntry`/`camelUrl`, mapped per
   storefront in `CAMEL_HOSTS`, hidden for non-ASIN keys or uncovered
   stores), both opened in a background tab so the popup stays open.

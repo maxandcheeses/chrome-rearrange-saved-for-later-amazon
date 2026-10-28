@@ -32,6 +32,7 @@ jobs:
             storage.js \
             popup.html \
             popup.js \
+            theme.js \
             content.js \
             content.css \
             icons \

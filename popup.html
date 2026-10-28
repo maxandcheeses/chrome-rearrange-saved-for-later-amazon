@@ -3,7 +3,32 @@
 <head>
 <meta charset="utf-8">
 <title>Saved for Later Reorder</title>
+<script src="theme.js"></script>
 <style>
+  /* Theme colors. theme.js sets data-theme to "light" or "dark" on <html>
+     before first paint (resolving the Auto setting from the system). */
+  :root {
+    color-scheme: light;
+    --surface: #fff; --text: #0f1111; --text-muted: #565959; --text-faint: #999;
+    --btn-bg: #f0f2f2; --btn-hover: #e3e6e6; --border: #d5d9d9; --divider: #eee;
+    --input-border: #949494; --img-bg: #f5f5f5;
+    --inverse-bg: #0f1111; --inverse-text: #fff;
+    --link: #007185; --highlight-bg: #e8f4f5;
+    --danger-text: #c40000; --danger-bg: #fdecea;
+    --success: #067d62; --success-bg: #f0faf6; --price: #b12704; --warning-text: #915400;
+    --warn-bg: #fef8f0; --warn-border: #f0c37b; --warn-text: #7a4a00;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1d2023; --text: #e6e8e8; --text-muted: #a5abab; --text-faint: #80878b;
+    --btn-bg: #2b3034; --btn-hover: #363c41; --border: #41474c; --divider: #2e3337;
+    --input-border: #6b7277; --img-bg: #2a2e31;
+    --inverse-bg: #e6e8e8; --inverse-text: #0f1111;
+    --link: #4fb6c4; --highlight-bg: #173a40;
+    --danger-text: #ff7a70; --danger-bg: #3d2020;
+    --success: #3cc19c; --success-bg: #12271f; --price: #ff8a65; --warning-text: #f0b35a;
+    --warn-bg: #2e2416; --warn-border: #6e5226; --warn-text: #f3c98b;
+  }
   /* body is the only scroll container. A non-visible overflow on html stops
      body's overflow propagating to the viewport, and with no body margin the
      vertical scrollbar narrows the content instead of pushing it sideways. */
@@ -13,38 +38,38 @@
   html { max-height: 600px; overflow: hidden; scrollbar-width: none; }
   body {
     font-family: "Amazon Ember", Arial, sans-serif; width: 360px; margin: 0; padding: 12px; font-size: 13px;
-    color: #0f1111; background: #fff; max-height: 600px; overflow-x: hidden; overflow-y: auto; box-sizing: border-box;
+    color: var(--text); background: var(--surface); max-height: 600px; overflow-x: hidden; overflow-y: auto; box-sizing: border-box;
     transition: width 0.15s ease;
   }
   body.grid-mode { width: 800px; max-height: 600px; }
   #header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
-  h3 { margin: 0; font-size: 15px; color: #0f1111; }
+  h3 { margin: 0; font-size: 15px; color: var(--text); }
   #headerActions { display: flex; gap: 6px; flex-shrink: 0; }
   #headerActions button {
     width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; line-height: 1; background: #f0f2f2; border: 1px solid #d5d9d9;
-    color: #0f1111; box-shadow: none; border-radius: 999px; flex-shrink: 0;
+    font-size: 14px; line-height: 1; background: var(--btn-bg); border: 1px solid var(--border);
+    color: var(--text); box-shadow: none; border-radius: 999px; flex-shrink: 0;
   }
-  #headerActions button:hover { background: #e3e6e6; }
-  #msg { color: #565959; font-size: 12px; margin: 5px 0; }
+  #headerActions button:hover { background: var(--btn-hover); }
+  #msg { color: var(--text-muted); font-size: 12px; margin: 5px 0; }
   /* Shown only while at least one price target exists (renderPriceTargets). */
-  .tabBar { display: flex; gap: 4px; border-bottom: 1px solid #d5d9d9; margin: 4px 0 6px; }
+  .tabBar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 4px 0 6px; }
   .tabBar[hidden] { display: none; }
   #tabBarModal { margin: 0; padding: 4px 14px 0; flex-shrink: 0; }
   .tabBtn {
     padding: 5px 10px; font-size: 12px; background: none; border: none; border-bottom: 2px solid transparent;
-    border-radius: 0; color: #565959; box-shadow: none; margin-bottom: -1px; cursor: pointer;
+    border-radius: 0; color: var(--text-muted); box-shadow: none; margin-bottom: -1px; cursor: pointer;
   }
-  .tabBtn:hover { color: #0f1111; }
-  .tabBtn.active { color: #0f1111; font-weight: 600; border-bottom-color: #e77600; }
+  .tabBtn:hover { color: var(--text); }
+  .tabBtn.active { color: var(--text); font-weight: 600; border-bottom-color: #e77600; }
   .targetsPanel { display: none; }
-  .targetsPanel .hint { font-size: 11px; color: #565959; margin: 0 0 6px; }
+  .targetsPanel .hint { font-size: 11px; color: var(--text-muted); margin: 0 0 6px; }
   body.tab-targets .targetsPanel { display: block; }
   #targetsPanelModal { flex: 1; min-height: 0; overflow-y: auto; }
   /* The targets tab reuses the saved tab's slots so nothing moves: its hint
      takes #msg's place, and its filter takes the label controls' place in
      the same .labelBar (compact bar and grid header). */
-  #targetsHint { display: none; color: #565959; font-size: 12px; margin: 5px 0; }
+  #targetsHint { display: none; color: var(--text-muted); font-size: 12px; margin: 5px 0; }
   body.tab-targets #targetsHint { display: block; }
   .labelBar .targetsFilter { display: none; }
   body.tab-targets .labelBar .targetsFilter { display: block; }
@@ -56,13 +81,13 @@
   body.tab-targets #msg, body.tab-targets #list, body.tab-targets #actions,
   body.tab-targets #incompleteBanner, body.tab-targets #cartSection,
   body.tab-targets #tileGrid, body.tab-targets #gridModalFooter { display: none !important; }
-  #targetsList { box-sizing: border-box; list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; border: 1px solid #d5d9d9; border-radius: 8px; }
+  #targetsList { box-sizing: border-box; list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
   /* Compact popup: rows like #list. */
-  #targetsList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  #targetsList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--divider); }
   #targetsList li:last-child { border-bottom: none; }
   #targetsList li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
   #targetsList li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
-  #targetsList .imgwrap { width: 36px; height: 36px; flex-shrink: 0; background: #f5f5f5; border-radius: 4px; }
+  #targetsList .imgwrap { width: 36px; height: 36px; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
   #targetsList img { width: 36px; height: 36px; object-fit: contain; }
   /* Grid view: cards laid out exactly like #tileGrid's tiles (same columns,
      zoom, gaps and card style), or its table view's rows when that's on. */
@@ -75,14 +100,14 @@
   }
   #targetsListModal li {
     display: flex; flex-direction: column; gap: 4px;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px; padding: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px;
   }
   #targetsListModal li .handle { display: none; }
   #targetsListModal li.drag-over-before { box-shadow: inset 2px 0 0 0 #e77600; }
   #targetsListModal li.drag-over-after { box-shadow: inset -2px 0 0 0 #e77600; }
   #targetsListModal .imgwrap {
     display: flex; align-items: center; justify-content: center;
-    height: var(--tile-img, 100px); margin: 2px 0; background: #f5f5f5; border-radius: 6px; flex-shrink: 0;
+    height: var(--tile-img, 100px); margin: 2px 0; background: var(--img-bg); border-radius: 6px; flex-shrink: 0;
   }
   #targetsListModal img { max-width: 100%; max-height: 100%; object-fit: contain; }
   #targetsListModal .target-main .title {
@@ -91,11 +116,11 @@
   }
   #targetsListModal li.filter-empty { grid-column: 1 / -1; }
   #targetsListModal.table-view {
-    display: block; border: 1px solid #d5d9d9; border-radius: 8px; width: 100%; box-sizing: border-box;
+    display: block; border: 1px solid var(--border); border-radius: 8px; width: 100%; box-sizing: border-box;
   }
   #targetsListModal.table-view li {
     flex-direction: row; align-items: center; gap: 8px;
-    border: none; border-radius: 0; border-bottom: 1px solid #eee; padding: 2px 16px 2px 10px;
+    border: none; border-radius: 0; border-bottom: 1px solid var(--divider); padding: 2px 16px 2px 10px;
   }
   #targetsListModal.table-view li:last-child { border-bottom: none; }
   #targetsListModal.table-view li .handle { display: block; }
@@ -106,42 +131,42 @@
   #targetsListModal.table-view .target-main .title { display: block; flex: 1; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
   #targetsListModal.table-view .target-meta { flex-wrap: nowrap; flex-shrink: 0; }
   /* Both. */
-  .targetsList li.filter-empty { justify-content: center; color: #565959; font-size: 12px; padding: 14px 8px; cursor: default; }
+  .targetsList li.filter-empty { justify-content: center; color: var(--text-muted); font-size: 12px; padding: 14px 8px; cursor: default; }
   .targetsList li[draggable="true"] { cursor: grab; user-select: none; }
   .targetsList li.drag-source { opacity: 0.35; }
-  .targetsList .handle { color: #999; flex-shrink: 0; }
+  .targetsList .handle { color: var(--text-faint); flex-shrink: 0; }
   .targetsList li.off-page .imgwrap, .targetsList li.off-page .target-main { opacity: 0.6; }
   .target-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .target-main .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .target-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 11px; color: #565959; }
+  .target-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 11px; color: var(--text-muted); }
   /* Notification cards for price targets that are in range (renderPriceAlerts). */
   .priceAlerts { display: flex; flex-direction: column; gap: 6px; margin: 0 0 6px; max-height: 150px; overflow-y: auto; }
   .priceAlerts[hidden] { display: none; }
   #priceAlertsModal { margin: 6px 14px 0; flex-shrink: 0; }
   .price-alert {
     display: flex; flex-direction: column; gap: 6px; padding: 7px 10px;
-    background: #f0faf6; border: 1px solid #067d62; border-radius: 8px; font-size: 12px;
+    background: var(--success-bg); border: 1px solid var(--success); border-radius: 8px; font-size: 12px;
   }
   body.grid-mode #priceAlertsModal .price-alert { flex-direction: row; align-items: center; justify-content: space-between; }
   .price-alert-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .price-alert-text strong { color: #067d62; font-size: 11px; }
+  .price-alert-text strong { color: var(--success); font-size: 11px; }
   .price-alert-text .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .price-alert-detail { font-size: 11px; color: #565959; }
+  .price-alert-detail { font-size: 11px; color: var(--text-muted); }
   .price-alert-actions { display: flex; gap: 6px; flex-shrink: 0; }
   .price-alert-actions button {
-    padding: 3px 10px; font-size: 11px; background: #fff; border: 1px solid #d5d9d9; border-radius: 999px;
-    box-shadow: none; color: #0f1111;
+    padding: 3px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+    box-shadow: none; color: var(--text);
   }
-  .price-alert-actions button:hover { background: #f0f2f2; }
+  .price-alert-actions button:hover { background: var(--btn-bg); }
   #dialog .price-rule-notify { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
   #dialog .price-rule-notify input { margin: 0; }
-  .target-gap { font-weight: 600; color: #b12704; }
-  .target-gap.hit { color: #067d62; }
-  #msg.warning { color: #915400; }
-  #msg.loading { font-weight: bold; color: #0f1111; }
+  .target-gap { font-weight: 600; color: var(--price); }
+  .target-gap.hit { color: var(--success); }
+  #msg.warning { color: var(--warning-text); }
+  #msg.loading { font-weight: bold; color: var(--text); }
   #incompleteBanner {
     display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: #fef8f0; border: 1px solid #f0c37b; color: #7a4a00;
+    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
     border-radius: 8px; padding: 5px 10px; margin-top: 5px; font-size: 11px;
   }
   /* Targets tab's own "Load all" prompt (unloaded items look "Not on this
@@ -149,31 +174,31 @@
      #msg / the grid footer are hidden on that tab. */
   .targetsLoadBanner {
     display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: #fef8f0; border: 1px solid #f0c37b; color: #7a4a00;
+    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
     border-radius: 8px; padding: 5px 10px; margin-top: 6px; font-size: 11px;
   }
   body.tab-targets.items-incomplete .targetsLoadBanner,
   body.tab-targets.msg-loading .targetsLoadBanner { display: flex; }
-  .targetsLoadingText { display: none; font-weight: 600; color: #0f1111; }
+  .targetsLoadingText { display: none; font-weight: 600; color: var(--text); }
   body.msg-loading .targetsLoadingText { display: inline; }
   body.msg-loading .targetsLoadText, body.msg-loading .loadAllBtnTargets { display: none; }
   #incompleteBanner button, .targetsLoadBanner button {
-    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: #fff; border: 1px solid #d5d9d9; border-radius: 16px;
+    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   }
-  #list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #d5d9d9; border-radius: 8px; }
+  #list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
   #list.disabled { pointer-events: none; opacity: 0.6; }
   #list li {
     display: flex; align-items: center; gap: 8px;
     /* Extra right padding keeps label chips clear of the list's scrollbar. */
-    padding: 6px 14px 6px 8px; border-bottom: 1px solid #eee; background: #fff; cursor: grab;
+    padding: 6px 14px 6px 8px; border-bottom: 1px solid var(--divider); background: var(--surface); cursor: grab;
   }
   #list li:last-child { border-bottom: none; }
   #list li.drag-source { opacity: 0.35; }
   #list li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
   #list li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
-  #list img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; background: #f5f5f5; border-radius: 4px; }
+  #list img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
   a.title { color: inherit; text-decoration: none; cursor: pointer; }
-  a.title:hover { text-decoration: underline; color: #007185; }
+  a.title:hover { text-decoration: underline; color: var(--link); }
   #list .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #list .badge {
     width: 32px; text-align: center; font-size: 11px; font-weight: bold; background: #e77600; color: #fff;
@@ -184,49 +209,49 @@
   #list .badge:focus { outline: none; border-color: #a34b00; box-shadow: 0 0 0 2px rgba(163, 75, 0, 0.35); }
   #list .badge::-webkit-inner-spin-button,
   #list .badge::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  #list .handle { color: #999; flex-shrink: 0; }
+  #list .handle { color: var(--text-faint); flex-shrink: 0; }
 
   #gridModal {
-    display: none; position: fixed; inset: 0; background: #fff; z-index: 100;
+    display: none; position: fixed; inset: 0; background: var(--surface); z-index: 100;
     flex-direction: column;
   }
   body.grid-mode #gridModal { display: flex; }
   #gridModalHeader {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-    padding: 6px 14px; border-bottom: 1px solid #d5d9d9; flex-shrink: 0;
+    padding: 6px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
   #gridModalHeader h4 { margin: 0; font-size: 13px; flex-shrink: 0; }
-  #gridModalHeader .toolbarLabel { color: #565959; font-size: 12px; flex-shrink: 0; }
+  #gridModalHeader .toolbarLabel { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
   #gridModalHeader.table-view .toolbarLabel,
   #gridModalHeader.table-view #tileSizeGroup { display: none; }
-  .segmented { display: inline-flex; border: 1px solid #d5d9d9; border-radius: 999px; overflow: hidden; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
   .tileSizeBtn {
-    padding: 5px 12px; font-size: 12px; border: none; border-radius: 0; background: #f0f2f2;
-    color: #0f1111; box-shadow: none;
+    padding: 5px 12px; font-size: 12px; border: none; border-radius: 0; background: var(--btn-bg);
+    color: var(--text); box-shadow: none;
   }
-  .tileSizeBtn + .tileSizeBtn { border-left: 1px solid #d5d9d9; }
-  .tileSizeBtn:hover { background: #e3e6e6; }
-  .tileSizeBtn.active { background: #0f1111; color: #fff; }
+  .tileSizeBtn + .tileSizeBtn { border-left: 1px solid var(--border); }
+  .tileSizeBtn:hover { background: var(--btn-hover); }
+  .tileSizeBtn.active { background: var(--inverse-bg); color: var(--inverse-text); }
   #tableViewBtn {
     margin-left: auto;
     width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; line-height: 1; background: #f0f2f2; border: 1px solid #d5d9d9;
-    color: #0f1111; box-shadow: none; border-radius: 999px;
+    font-size: 14px; line-height: 1; background: var(--btn-bg); border: 1px solid var(--border);
+    color: var(--text); box-shadow: none; border-radius: 999px;
   }
-  #tableViewBtn:hover { background: #e3e6e6; }
-  #tableViewBtn.active { background: #0f1111; color: #fff; border-color: #0f1111; }
+  #tableViewBtn:hover { background: var(--btn-hover); }
+  #tableViewBtn.active { background: var(--inverse-bg); color: var(--inverse-text); border-color: var(--inverse-bg); }
   #settingsBtnModal {
     width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; line-height: 1; background: #f0f2f2; border: 1px solid #d5d9d9;
-    color: #0f1111; box-shadow: none; border-radius: 999px;
+    font-size: 14px; line-height: 1; background: var(--btn-bg); border: 1px solid var(--border);
+    color: var(--text); box-shadow: none; border-radius: 999px;
   }
-  #settingsBtnModal:hover { background: #e3e6e6; }
+  #settingsBtnModal:hover { background: var(--btn-hover); }
   #closeGridBtn {
     width: 26px; height: 26px; padding: 0; flex-shrink: 0;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; box-shadow: none;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); box-shadow: none;
     border-radius: 999px; font-size: 13px; line-height: 1;
   }
-  #closeGridBtn:hover { background: #e3e6e6; }
+  #closeGridBtn:hover { background: var(--btn-hover); }
 
   #tileGrid {
     list-style: none; margin: 0; padding: 8px 10px; flex: 1; min-height: 0; overflow-y: auto;
@@ -236,7 +261,7 @@
   #tileGrid.disabled { pointer-events: none; opacity: 0.6; }
   #tileGrid li.tile {
     position: relative; display: flex; flex-direction: column;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     padding: 8px; cursor: grab;
   }
   #tileGrid li.tile .handle { display: none; }
@@ -256,7 +281,7 @@
   #tileGrid .badge::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   #tileGrid .imgwrap {
     display: flex; align-items: center; justify-content: center;
-    height: var(--tile-img, 100px); margin: 6px 0; background: #f5f5f5; border-radius: 6px; flex-shrink: 0;
+    height: var(--tile-img, 100px); margin: 6px 0; background: var(--img-bg); border-radius: 6px; flex-shrink: 0;
   }
   #tileGrid img { max-width: 100%; max-height: 100%; object-fit: contain; }
   #tileGrid .title {
@@ -268,16 +293,16 @@
      stretched to fill the modal's full width/height instead of being capped
      to a narrow column. */
   #tileGrid.table-view {
-    display: block; border: 1px solid #d5d9d9; border-radius: 8px; width: 100%; box-sizing: border-box;
+    display: block; border: 1px solid var(--border); border-radius: 8px; width: 100%; box-sizing: border-box;
   }
   #tileGrid.table-view li.tile {
     width: 100%; box-sizing: border-box;
     flex-direction: row; align-items: center; gap: 8px;
-    border: none; border-radius: 0; border-bottom: 1px solid #eee;
+    border: none; border-radius: 0; border-bottom: 1px solid var(--divider);
     padding: 2px 16px 2px 10px;
   }
   #tileGrid.table-view li.tile:last-child { border-bottom: none; }
-  #tileGrid.table-view li.tile .handle { display: block; color: #999; flex-shrink: 0; }
+  #tileGrid.table-view li.tile .handle { display: block; color: var(--text-faint); flex-shrink: 0; }
   #tileGrid.table-view .badge { align-self: center; width: 30px; font-size: 11px; padding: 1px 4px; }
   #tileGrid.table-view .imgwrap { width: 24px; height: 24px; margin: 0; flex-shrink: 0; }
   #tileGrid.table-view .title {
@@ -287,22 +312,22 @@
 
   #gridModalFooter {
     flex-shrink: 0; display: flex; align-items: center; gap: 12px;
-    border-top: 1px solid #eee; padding: 6px 14px; font-size: 11px; color: #565959;
+    border-top: 1px solid var(--divider); padding: 6px 14px; font-size: 11px; color: var(--text-muted);
   }
   #gridModalFooterMsgs { flex: 1; min-width: 0; }
   #modalIncompleteBanner {
     display: none; align-items: center; justify-content: space-between; gap: 8px;
-    background: #fef8f0; border: 1px solid #f0c37b; color: #7a4a00;
+    background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
     border-radius: 8px; padding: 6px 10px; font-size: 11px; margin-top: 6px;
   }
   #modalIncompleteBanner button {
-    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: #fff; border: 1px solid #d5d9d9; border-radius: 16px;
+    flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   }
   #gridModalFooterActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   #resetBtnModal {
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; font-size: 12px; padding: 6px 12px;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); font-size: 12px; padding: 6px 12px;
   }
-  #resetBtnModal:hover:not(:disabled) { background: #e3e6e6; }
+  #resetBtnModal:hover:not(:disabled) { background: var(--btn-hover); }
   #applyBtnModal {
     background: #ffd814; border: 1px solid #fcd200; color: #0f1111; font-weight: 600;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -313,17 +338,17 @@
   #applyBtnModalSub:empty { display: none; }
   #cartSection { margin-top: 8px; }
   #cartSection.hidden { display: none; }
-  #cartSection h4 { margin: 0 0 6px; font-size: 12px; color: #565959; }
-  #cartList { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; border: 1px solid #d5d9d9; border-radius: 8px; }
-  #cartList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eee; background: #fff; }
+  #cartSection h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-muted); }
+  #cartList { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  #cartList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--divider); background: var(--surface); }
   #cartList li:last-child { border-bottom: none; }
-  #cartList img { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; background: #f5f5f5; border-radius: 4px; }
+  #cartList img { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
   #cartList .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #cartList button {
-    flex-shrink: 0; padding: 4px 8px; font-size: 11px; background: #f0f2f2; border: 1px solid #d5d9d9;
-    color: #0f1111; border-radius: 999px;
+    flex-shrink: 0; padding: 4px 8px; font-size: 11px; background: var(--btn-bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 999px;
   }
-  #cartList button:hover:not(:disabled) { background: #e3e6e6; }
+  #cartList button:hover:not(:disabled) { background: var(--btn-hover); }
   #actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   #actions #applyBtn { min-width: 100px; }
   button {
@@ -342,28 +367,28 @@
   #applyBtnSub:empty { display: none; }
   .historyBtn {
     width: 32px; padding: 0; flex-shrink: 0; font-size: 16px; line-height: 1;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text);
   }
-  .historyBtn:hover:not(:disabled) { background: #e3e6e6; }
+  .historyBtn:hover:not(:disabled) { background: var(--btn-hover); }
   /* Icons: "undo" / "redo" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0), inlined. */
   .historyBtn svg { display: block; width: 17px; height: 17px; margin: auto; fill: currentColor; }
   #gridModalFooterActions .historyBtn svg { width: 15px; height: 15px; }
   /* Undo/redo sit as a pair, a little tighter than the other buttons. */
   #undoBtn + #redoBtn, #undoBtnModal + #redoBtnModal { margin-left: -4px; }
   #gridModalFooterActions .historyBtn { width: 28px; height: 28px; font-size: 14px; box-shadow: none; }
-  #refreshBtn, #loadAllBtn, #resetBtn { background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; }
-  #refreshBtn:hover, #loadAllBtn:hover:not(:disabled), #resetBtn:hover:not(:disabled) { background: #e3e6e6; }
+  #refreshBtn, #loadAllBtn, #resetBtn { background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); }
+  #refreshBtn:hover, #loadAllBtn:hover:not(:disabled), #resetBtn:hover:not(:disabled) { background: var(--btn-hover); }
   #loadAllBtn:disabled, #resetBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
   #refreshBtn.cancel { background: #c40000; border-color: #a80000; color: #fff; }
   #refreshBtn.cancel:hover:not(:disabled) { background: #a80000; }
   #refreshBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  #status { margin-top: 5px; font-size: 12px; white-space: pre-wrap; color: #333; }
+  #status { margin-top: 5px; font-size: 12px; white-space: pre-wrap; color: var(--text); }
   #status:empty { margin-top: 0; }
-  #status.error { color: #c40000; }
+  #status.error { color: var(--danger-text); }
   #settingsPanel {
     display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
     z-index: 200; width: 300px; max-height: 80vh; overflow-y: auto; box-sizing: border-box;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25); padding: 12px 16px 16px;
   }
   #settingsBackdrop {
@@ -371,22 +396,22 @@
   }
   #settingsBackdrop.show, #settingsPanel.show { display: block; }
   #settingsPanelHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  #settingsPanel h4 { margin: 0; font-size: 13px; color: #0f1111; }
+  #settingsPanel h4 { margin: 0; font-size: 13px; color: var(--text); }
   #closeSettingsBtn {
     width: 26px; height: 26px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; box-shadow: none;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); box-shadow: none;
     border-radius: 999px; font-size: 13px; line-height: 1;
   }
-  #closeSettingsBtn:hover { background: #e3e6e6; }
+  #closeSettingsBtn:hover { background: var(--btn-hover); }
   #settingsPanel label { display: block; margin-top: 6px; font-weight: bold; font-size: 12px; }
   #settingsPanel select, #settingsPanel input[type="number"] {
-    width: 100%; box-sizing: border-box; margin-top: 2px; border: 1px solid #949494;
+    width: 100%; box-sizing: border-box; margin-top: 2px; border: 1px solid var(--input-border);
     border-radius: 8px; padding: 5px 8px; font-family: inherit; font-size: 13px;
   }
   /* Same custom chevron as the label filter, in place of the native arrow. */
   #settingsPanel select, #dialog select {
     appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 28px;
-    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
+    background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
   }
   #settingsPanel select:focus, #settingsPanel input[type="number"]:focus {
     outline: none; border-color: #e77600; box-shadow: 0 0 0 3px rgba(228, 121, 17, 0.5);
@@ -394,17 +419,17 @@
   #settingsPanel .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   #settingsPanel .checkbox-row label { display: inline; margin: 0; font-weight: normal; }
   #settingsPanel .checkbox-row input { width: auto; margin: 0; }
-  .hint { color: #777; font-size: 11px; margin: 2px 0 0; }
+  .hint { color: var(--text-faint); font-size: 11px; margin: 2px 0 0; }
   #syncStatus:empty { display: none; }
-  #syncStatus.sync-error { color: #c40000; }
+  #syncStatus.sync-error { color: var(--danger-text); }
   #settingsPanel .sync-actions { display: flex; gap: 6px; margin-top: 6px; }
   #settingsPanel .sync-actions button {
     height: 24px; padding: 0 10px; font-size: 12px; line-height: 1; box-shadow: none;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text);
   }
-  #settingsPanel .sync-actions button:hover:not(:disabled) { background: #e3e6e6; }
+  #settingsPanel .sync-actions button:hover:not(:disabled) { background: var(--btn-hover); }
   #settingsPanel .sync-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
-  #settingsPanel #deleteSyncBtn { color: #c40000; }
+  #settingsPanel #deleteSyncBtn { color: var(--danger-text); }
   #bmcLink {
     display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
     background: #FFDD00; color: #000; border: 1px solid #000; border-radius: 999px;
@@ -413,23 +438,23 @@
   }
   #bmcLink:hover { background: #f2d200; }
   #projectLink {
-    display: block; margin-top: 10px; font-size: 11px; color: #007185; text-decoration: none;
+    display: block; margin-top: 10px; font-size: 11px; color: var(--link); text-decoration: none;
   }
   #projectLink:hover { text-decoration: underline; }
   #popupFooter {
-    margin-top: 6px; padding-top: 5px; border-top: 1px solid #eee;
-    font-size: 10.5px; line-height: 1.3; color: #767676; text-align: center;
+    margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--divider);
+    font-size: 10.5px; line-height: 1.3; color: var(--text-faint); text-align: center;
   }
   #popupFooter:empty { display: none; }
   /* The Price targets tab's own footer, in place of #popupFooter's tip. */
   .targetsFooter {
-    display: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid #eee;
-    font-size: 10.5px; line-height: 1.3; color: #767676; text-align: center;
+    display: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--divider);
+    font-size: 10.5px; line-height: 1.3; color: var(--text-faint); text-align: center;
   }
   body.tab-targets .targetsFooter { display: block; }
   /* Always visible: pinned to the bottom of the popup when it scrolls, and
      outside the scrolling panel in the grid view. */
-  #targetsFooter { position: sticky; bottom: -12px; margin-bottom: -12px; padding-bottom: 12px; background: #fff; }
+  #targetsFooter { position: sticky; bottom: -12px; margin-bottom: -12px; padding-bottom: 12px; background: var(--surface); }
   /* min-height is set to #gridModalFooter's height (matchTargetsFooterHeight). */
   #targetsFooterModal {
     flex-shrink: 0; margin: 0; padding: 6px 14px; box-sizing: border-box;
@@ -443,23 +468,23 @@
   .labelBar { display: flex; align-items: center; gap: 6px; }
   #labelBar { margin-bottom: 6px; }
   .labelBar select {
-    flex: 1; min-width: 0; max-width: 220px; border: 1px solid #d5d9d9; border-radius: 999px;
-    padding: 3px 26px 3px 10px; font-family: inherit; font-size: 12px; color: #0f1111;
+    flex: 1; min-width: 0; max-width: 220px; border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 26px 3px 10px; font-family: inherit; font-size: 12px; color: var(--text);
     /* The native arrow sits flush against the pill's rounded edge; draw our own chevron. */
     appearance: none; -webkit-appearance: none; cursor: pointer;
-    background: #f0f2f2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
+    background: var(--btn-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23565959' d='M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z'/%3E%3C/svg%3E") no-repeat right 8px center / 14px 14px;
   }
-  .labelBar select:hover { background-color: #e3e6e6; }
+  .labelBar select:hover { background-color: var(--btn-hover); }
   .labelBar select:focus { outline: none; border-color: #e77600; box-shadow: 0 0 0 2px rgba(228, 121, 17, 0.4); }
   .labelBar button {
     flex-shrink: 0; height: 24px; padding: 0 10px; font-size: 12px; line-height: 1;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; box-shadow: none;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); box-shadow: none;
   }
-  .labelBar button:hover:not(:disabled) { background: #e3e6e6; }
+  .labelBar button:hover:not(:disabled) { background: var(--btn-hover); }
   .labelBar .labelIconBtn { width: 24px; padding: 0; }
   /* Icon: "transition" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0), inlined. */
   .labelBar .labelIconBtn svg { display: block; width: 15px; height: 15px; margin: auto; fill: currentColor; }
-  .labelBar .inBetweenBtn.active { background: #0f1111; border-color: #0f1111; color: #fff; }
+  .labelBar .inBetweenBtn.active { background: var(--inverse-bg); border-color: var(--inverse-bg); color: var(--inverse-text); }
   li.between-item { opacity: 0.5; }
   li.between-item:hover { opacity: 0.85; }
   .label-chips { display: flex; flex-wrap: wrap; gap: 3px; flex-shrink: 0; max-width: 45%; overflow: hidden; }
@@ -476,24 +501,34 @@
   .label-c5 { background: #fff3b8; color: #6b5900; }
   .label-c6 { background: #dfe8f6; color: #1f4b8a; }
   .label-c7 { background: #ececec; color: #3b3f3f; }
+  :root[data-theme="dark"] .label-c0 { background: #4a3410; color: #f6c98a; }
+  :root[data-theme="dark"] .label-c1 { background: #133e43; color: #8fd8e0; }
+  :root[data-theme="dark"] .label-c2 { background: #24391a; color: #b5dc93; }
+  :root[data-theme="dark"] .label-c3 { background: #4a1f2c; color: #f2a7bd; }
+  :root[data-theme="dark"] .label-c4 { background: #2f2a52; color: #c4bcf2; }
+  :root[data-theme="dark"] .label-c5 { background: #463d0e; color: #f2dc7a; }
+  :root[data-theme="dark"] .label-c6 { background: #1d3150; color: #a9c6f0; }
+  :root[data-theme="dark"] .label-c7 { background: #3a3d3f; color: #d4d7d7; }
+  /* Outranks the dark .label-cN backgrounds so swatches stay the label's color. */
+  :root[data-theme="dark"] .label-swatch { background: currentColor; }
   /* Price pills: a target's price (saved list, one per target, among the label
      chips) or the current price (Price targets tab); .hit while in range. */
   .price-tag {
     flex-shrink: 0; font-size: 10px; line-height: 1.5; padding: 0 6px; border-radius: 999px;
-    border: 1px solid #d5d9d9; color: #565959; white-space: nowrap;
+    border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap;
   }
-  .price-tag.hit { border-color: #067d62; color: #067d62; font-weight: 600; }
+  .price-tag.hit { border-color: var(--success); color: var(--success); font-weight: 600; }
   .price-rule-range { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; }
   .price-rule-range input { flex: 1; min-width: 0; }
   #dialog .price-rule-label { display: block; font-size: 12px; margin: 0 0 4px; }
   #dialog .price-rule-new { margin-top: 6px; }
-  #dialog .price-rule-note { font-size: 11px; color: #565959; margin: 8px 0 0; }
-  #dialog .price-rule-error { font-size: 11px; color: #c40000; margin: 6px 0 0; }
+  #dialog .price-rule-note { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
+  #dialog .price-rule-error { font-size: 11px; color: var(--danger-text); margin: 6px 0 0; }
   .label-editor { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
   .label-editor-row { display: flex; align-items: center; gap: 8px; }
-  .label-editor-section { margin: 4px 0 0; font-size: 11px; font-weight: 600; color: #565959; }
+  .label-editor-section { margin: 4px 0 0; font-size: 11px; font-weight: 600; color: var(--text-muted); }
   .label-editor-section:first-child { margin-top: 0; }
-  .label-editor-handle { flex-shrink: 0; color: #999; cursor: grab; padding: 0 2px; user-select: none; }
+  .label-editor-handle { flex-shrink: 0; color: var(--text-faint); cursor: grab; padding: 0 2px; user-select: none; }
   .label-editor-row.drag-source { opacity: 0.35; }
   .label-editor-row.drag-over-before { box-shadow: 0 -2px 0 0 #e77600; }
   .label-editor-row.drag-over-after { box-shadow: 0 2px 0 0 #e77600; }
@@ -503,7 +538,7 @@
     width: 16px; height: 16px; padding: 0; border: none; box-shadow: none;
     outline: 2px solid transparent; outline-offset: 1px;
   }
-  button.label-swatch:hover, button.label-swatch[aria-expanded="true"] { outline-color: #d5d9d9; }
+  button.label-swatch:hover, button.label-swatch[aria-expanded="true"] { outline-color: var(--border); }
   .label-palette { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 2px 22px; }
   .label-palette-opt {
     width: 30px; height: 20px; padding: 0; font-size: 10px; font-weight: 600; line-height: 1;
@@ -512,43 +547,48 @@
   .label-palette-opt:hover { border-color: currentColor; }
   .label-palette-opt[aria-checked="true"] { border-color: currentColor; box-shadow: 0 0 0 1px currentColor; }
   #dialog .label-editor-row input[type="text"] { flex: 1; min-width: 0; padding: 4px 8px; font-size: 12px; }
-  .label-editor-count { flex-shrink: 0; font-size: 11px; color: #565959; min-width: 44px; text-align: right; }
+  .label-editor-count { flex-shrink: 0; font-size: 11px; color: var(--text-muted); min-width: 44px; text-align: right; }
   .label-editor-delete {
     flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: none; border-radius: 999px;
-    background: transparent; box-shadow: none; color: #565959;
+    background: transparent; box-shadow: none; color: var(--text-muted);
   }
-  .label-editor-delete:hover { background: #fdecea; color: #c40000; }
+  .label-editor-delete:hover { background: var(--danger-bg); color: var(--danger-text); }
   .label-editor-delete svg { display: block; width: 16px; height: 16px; margin: auto; fill: currentColor; }
   li.filter-empty {
-    padding: 14px 10px; color: #565959; font-size: 12px; text-align: center; cursor: default;
+    padding: 14px 10px; color: var(--text-muted); font-size: 12px; text-align: center; cursor: default;
   }
   #tileGrid li.filter-empty { grid-column: 1 / -1; }
 
   #ctxMenu {
     display: none; position: fixed; z-index: 400; min-width: 170px; max-width: 240px;
     max-height: calc(100vh - 8px); overflow-y: auto; box-sizing: border-box;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25); padding: 4px 0; font-size: 12px;
   }
   #ctxMenu.show { display: block; }
   #ctxMenu .ctx-heading {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 2px 4px 2px 12px; color: #565959; font-size: 11px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px;
+    padding: 2px 4px 2px 12px; color: var(--text-muted); font-size: 11px;
   }
   #ctxMenu .ctx-heading .ctx-close {
     display: flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; padding: 0; border-radius: 999px; font-size: 11px; color: #565959;
+    width: 20px; height: 20px; padding: 0; border-radius: 999px; font-size: 11px; color: var(--text-muted);
   }
-  #ctxMenu .ctx-heading .ctx-close:hover { background: #e3e6e6; color: #0f1111; }
-  #ctxMenu button {
-    display: block; width: 100%; text-align: left; padding: 6px 12px; font-size: 12px;
-    border: none; border-radius: 0; background: none; box-shadow: none; color: #0f1111;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  #ctxMenu .ctx-heading .ctx-close:hover { background: var(--btn-hover); color: var(--text); }
+  #ctxMenu button { border: none; background: none; box-shadow: none; }
+  #ctxMenu button.ctx-item {
+    display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 6px 12px 6px 8px; font-size: 12px;
+    border-radius: 0; color: var(--text); white-space: nowrap;
   }
-  #ctxMenu button:hover { background: #f0f2f2; }
-  #ctxMenu button.danger { color: #c40000; }
-  #ctxMenu .ctx-icon { width: 12px; height: 12px; margin-left: 5px; vertical-align: -1px; fill: currentColor; color: #565959; }
-  #ctxMenu hr { border: none; border-top: 1px solid #eee; margin: 4px 0; }
+  #ctxMenu button.ctx-item:hover { background: var(--btn-bg); }
+  #ctxMenu button.ctx-item.danger { color: var(--danger-text); }
+  #ctxMenu button.ctx-item.danger:hover { background: var(--danger-bg); }
+  /* Fixed-width leading column so every entry's text lines up. */
+  #ctxMenu .ctx-lead { width: 14px; height: 14px; flex-shrink: 0; fill: currentColor; color: var(--text-muted); }
+  #ctxMenu .danger .ctx-lead { color: inherit; }
+  #ctxMenu [role="menuitemcheckbox"] .ctx-lead { color: var(--link); }
+  #ctxMenu .ctx-text { overflow: hidden; text-overflow: ellipsis; }
+  #ctxMenu hr { border: none; border-top: 1px solid var(--divider); margin: 4px 0; }
 
   /* Popup windows size themselves to their content, and fixed-position
      dialogs don't count toward it — give a short popup room for one. */
@@ -559,22 +599,22 @@
   #dialog {
     display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
     z-index: 500; width: 300px; max-width: calc(100vw - 24px); box-sizing: border-box;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25); padding: 12px 16px 14px;
   }
   #dialogBackdrop.show, #dialog.show { display: block; }
   #dialogHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-  #dialog h4 { margin: 0; font-size: 13px; color: #0f1111; }
+  #dialog h4 { margin: 0; font-size: 13px; color: var(--text); }
   /* Matches #closeSettingsBtn. */
   #dialogCloseBtn {
     width: 26px; height: 26px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111; box-shadow: none;
+    background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); box-shadow: none;
     border-radius: 999px; font-size: 13px; line-height: 1;
   }
-  #dialogCloseBtn:hover { background: #e3e6e6; }
+  #dialogCloseBtn:hover { background: var(--btn-hover); }
   #dialog p { margin: 0 0 8px; font-size: 12px; }
   #dialog input[type="text"], #dialog input[type="number"], #dialog select {
-    width: 100%; box-sizing: border-box; border: 1px solid #949494; border-radius: 8px;
+    width: 100%; box-sizing: border-box; border: 1px solid var(--input-border); border-radius: 8px;
     padding: 5px 8px; font-family: inherit; font-size: 13px;
   }
   #dialog select { padding-right: 28px; }
@@ -583,10 +623,10 @@
   }
   #dialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   #dialogActions button {
-    padding: 5px 14px; font-size: 12px; background: #f0f2f2; border: 1px solid #d5d9d9; color: #0f1111;
+    padding: 5px 14px; font-size: 12px; background: var(--btn-bg); border: 1px solid var(--border); color: var(--text);
   }
-  #dialogActions button:hover { background: #e3e6e6; }
-  #dialogActions button.primary { background: #ffd814; border-color: #fcd200; font-weight: 600; }
+  #dialogActions button:hover { background: var(--btn-hover); }
+  #dialogActions button.primary { background: #ffd814; border-color: #fcd200; color: #0f1111; font-weight: 600; }
   #dialogActions button.primary:hover { background: #f7ca00; }
   #dialogActions button.danger { background: #c40000; border-color: #a80000; color: #fff; }
   #dialogActions button.danger:hover { background: #a80000; }
@@ -595,7 +635,7 @@
   #list li[data-key], #tileGrid li[data-key] { user-select: none; }
   /* outline rather than box-shadow, which the drop-position line uses. */
   #list li.selected, #tileGrid li.tile.selected {
-    background: #e8f4f5; outline: 2px solid #007185; outline-offset: -2px;
+    background: var(--highlight-bg); outline: 2px solid var(--link); outline-offset: -2px;
   }
   /* Must be rendered (not display:none) for setDragImage, so park it offscreen. */
   #dragGhost {
@@ -604,13 +644,13 @@
   }
   #tooltip {
     display: none; position: fixed; z-index: 600; pointer-events: none; max-width: 240px;
-    background: #0f1111; color: #fff; font-size: 11px; line-height: 1.35; font-weight: 400;
+    background: var(--inverse-bg); color: var(--inverse-text); font-size: 11px; line-height: 1.35; font-weight: 400;
     padding: 4px 8px; border-radius: 6px; box-shadow: 0 2px 6px rgba(15, 17, 17, 0.25);
   }
   #tooltip.show { display: block; }
   #imagePreview {
     display: none; position: fixed; z-index: 300; pointer-events: none;
-    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
     box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25); padding: 8px;
   }
   #imagePreview.show { display: block; }
@@ -733,6 +773,13 @@
     <select id="defaultView">
       <option value="popup">Compact</option>
       <option value="grid">Extended</option>
+    </select>
+
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="auto">Auto (match system)</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
     </select>
 
     <label for="delay">Delay between actions (ms)</label>

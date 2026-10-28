@@ -5,7 +5,8 @@ const DEFAULTS = {
   tileSize: 'm',
   defaultView: 'popup',
   titleLinksEnabled: true,
-  tableView: false
+  tableView: false,
+  theme: 'auto'
 };
 
 let order = []; // array of keys, top to bottom (may include manual reordering)
@@ -1265,6 +1266,12 @@ function camelUrl(key, productUrl) {
 }
 
 const OPEN_IN_NEW_ICON_PATH = 'M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z'; // "open-in-new" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0)
+// More Material Design Icons (@mdi/svg 7.4.47, Apache-2.0) for the right-click menus.
+const CHECK_ICON_PATH = 'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z'; // "check"
+const PLUS_ICON_PATH = 'M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z'; // "plus"
+const PENCIL_ICON_PATH = 'M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z'; // "pencil"
+const TAG_ICON_PATH = 'M21.41,11.58L12.41,2.58C12.05,2.22 11.55,2 11,2H4C2.9,2 2,2.9 2,4V11C2,11.55 2.22,12.05 2.59,12.42L11.59,21.42C11.95,21.78 12.45,22 13,22C13.55,22 14.05,21.78 14.41,21.41L21.41,14.41C21.78,14.05 22,13.55 22,13C22,12.45 21.77,11.94 21.41,11.58M13,20L4,11V4H11V3.99L20,12.99L13,20M6.5,5A1.5,1.5 0 0,1 8,6.5A1.5,1.5 0 0,1 6.5,8A1.5,1.5 0 0,1 5,6.5A1.5,1.5 0 0,1 6.5,5Z'; // "tag-outline"
+const CHART_ICON_PATH = 'M16,11.78L20.24,4.45L21.97,5.45L16.74,14.5L10.23,10.75L5.46,19H22V21H2V3H4V17.54L9.66,7.75L16.17,11.5Z'; // "chart-line"
 
 // "Open product page" for the right-click menus, or null without a URL.
 // Background tab, like item titles, so the popup stays open.
@@ -1278,7 +1285,7 @@ function openProductEntry(url) {
 function camelEntry(key, productUrl) {
   const url = camelUrl(key, productUrl);
   if (!url) return null;
-  return { label: 'Price history on camelcamelcamel', icon: OPEN_IN_NEW_ICON_PATH, onClick: () => chrome.tabs.create({ url, active: false }) };
+  return { label: 'Price history on camelcamelcamel', icon: CHART_ICON_PATH, onClick: () => chrome.tabs.create({ url, active: false }) };
 }
 
 // Right-click menu for a row on the Price targets tab.
@@ -1287,14 +1294,16 @@ function openTargetMenu(rid, x, y) {
   const rule = priceRules.get(rid);
   const item = targetItem(rid);
   const entries = [{ heading: 'Price target', closable: true }];
-  entries.push({ label: 'Edit price target…', onClick: () => openPriceRuleDialog(rule.key, rid) });
-  entries.push({ label: 'Add another price target…', onClick: () => openPriceRuleDialog(rule.key) });
+  const label = getLabel(rule.labelId);
+  entries.push({ label: 'Edit price target…', icon: PENCIL_ICON_PATH, swatch: label && label.color, onClick: () => openPriceRuleDialog(rule.key, rid) });
+  entries.push({ label: 'Add another price target…', icon: PLUS_ICON_PATH, onClick: () => openPriceRuleDialog(rule.key) });
+  entries.push('sep');
   const product = openProductEntry(item.url);
   if (product) entries.push(product);
   const history = camelEntry(rule.key, item.url);
   if (history) entries.push(history);
-  entries.push('sep');
-  entries.push({ label: 'Delete price target', danger: true, onClick: () => removePriceRule(rid) });
+  if (product || history) entries.push('sep');
+  entries.push({ label: 'Delete price target', icon: TRASH_ICON_PATH, danger: true, onClick: () => removePriceRule(rid) });
   openContextMenu(entries, x, y);
 }
 
@@ -1682,8 +1691,10 @@ function closeContextMenu() {
   $('ctxMenu').classList.remove('show');
 }
 
-// entries: [{ label, onClick, danger, icon }] | { heading } | 'sep'
-// (icon: an SVG path drawn after the label, e.g. OPEN_IN_NEW_ICON_PATH)
+// entries: [{ label, onClick, danger, icon, checked, swatch }] | { heading } | 'sep'
+// Each entry has a leading column holding its icon (an SVG path, e.g.
+// PENCIL_ICON_PATH) or, for toggles, a ✓ when checked is true. swatch is a
+// label color index drawn before the text.
 function openContextMenu(entries, x, y) {
   const menu = $('ctxMenu');
   menu.innerHTML = '';
@@ -1709,10 +1720,24 @@ function openContextMenu(entries, x, y) {
     } else {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.textContent = entry.label;
+      btn.className = 'ctx-item';
       btn.title = entry.label;
-      if (entry.icon) {
-        btn.insertAdjacentHTML('beforeend', `<svg class="ctx-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${entry.icon}"/></svg>`);
+      const leadPath = entry.icon || (entry.checked ? CHECK_ICON_PATH : null);
+      btn.insertAdjacentHTML('beforeend', leadPath
+        ? `<svg class="ctx-lead" viewBox="0 0 24 24" aria-hidden="true"><path d="${leadPath}"/></svg>`
+        : '<span class="ctx-lead"></span>');
+      if (entry.swatch != null) {
+        const swatch = document.createElement('span');
+        swatch.className = `label-swatch label-c${entry.swatch}`;
+        btn.appendChild(swatch);
+      }
+      const text = document.createElement('span');
+      text.className = 'ctx-text';
+      text.textContent = entry.label;
+      btn.appendChild(text);
+      if (entry.checked !== undefined) {
+        btn.setAttribute('role', 'menuitemcheckbox');
+        btn.setAttribute('aria-checked', String(entry.checked));
       }
       if (entry.danger) btn.classList.add('danger');
       // keepOpen entries (label toggles) leave the menu up so several can
@@ -1741,7 +1766,9 @@ function openItemMenu(key, x, y) {
   const menuLabels = labels.filter((l) => !targetLabelIds.has(l.id));
   menuLabels.forEach((l) => {
     entries.push({
-      label: `${current.has(l.id) ? '✓' : ' '} ${l.name}`,
+      label: l.name,
+      checked: current.has(l.id),
+      swatch: l.color,
       keepOpen: true,
       onClick: () => {
         toggleItemLabel(key, l.id);
@@ -1750,22 +1777,23 @@ function openItemMenu(key, x, y) {
     });
   });
   if (menuLabels.length) entries.push('sep');
-  entries.push({ label: '＋ New label…', onClick: () => promptLabelName('New label', '', (name) => createLabel(name, key)) });
-  entries.push('sep');
+  entries.push({ label: 'New label…', icon: PLUS_ICON_PATH, onClick: () => promptLabelName('New label', '', (name) => createLabel(name, key)) });
+  entries.push('sep', { heading: 'Price targets' });
   // One entry per existing target ("Edit “Buy now” target…"), then add another.
   itemTargetIds(key).forEach((rid) => {
     const rule = priceRules.get(rid);
     const label = getLabel(rule.labelId);
-    entries.push({ label: `Edit “${label ? label.name : 'price'}” target…`, onClick: () => openPriceRuleDialog(key, rid) });
+    entries.push({ label: `Edit “${label ? label.name : 'price'}” target…`, icon: PENCIL_ICON_PATH, swatch: label && label.color, onClick: () => openPriceRuleDialog(key, rid) });
   });
-  entries.push({ label: itemTargetIds(key).length ? 'Add another price target…' : 'Label at a target price…', onClick: () => openPriceRuleDialog(key) });
+  entries.push({ label: itemTargetIds(key).length ? 'Add another price target…' : 'Label at a target price…', icon: TAG_ICON_PATH, onClick: () => openPriceRuleDialog(key) });
+  entries.push('sep');
   const item = itemsByKey.get(key);
   const product = openProductEntry(item && item.url);
   if (product) entries.push(product);
   const history = camelEntry(key, item && item.url);
   if (history) entries.push(history);
-  entries.push('sep');
-  entries.push({ label: 'Delete from Saved for later…', danger: true, onClick: () => confirmDeleteItem(key) });
+  if (product || history) entries.push('sep');
+  entries.push({ label: 'Delete from Saved for later…', icon: TRASH_ICON_PATH, danger: true, onClick: () => confirmDeleteItem(key) });
   openContextMenu(entries, x, y);
 }
 
@@ -2839,6 +2867,8 @@ function loadSettings(onLoaded) {
     $('delay').value = s.bumpDelayMs;
     $('reloadAfterApply').checked = s.reloadAfterApply;
     $('defaultView').value = s.defaultView === 'grid' ? 'grid' : 'popup';
+    $('theme').value = THEMES.includes(s.theme) ? s.theme : DEFAULTS.theme;
+    applyTheme($('theme').value);
     defaultView = s.defaultView === 'grid' ? 'grid' : 'popup';
     $('closeGridBtn').title = defaultView === 'grid' ? 'Close popup' : 'Close grid view';
     $('titleLinksEnabled').checked = s.titleLinksEnabled;
@@ -2858,8 +2888,10 @@ function saveSettings() {
     defaultView: $('defaultView').value === 'grid' ? 'grid' : 'popup',
     titleLinksEnabled,
     tableView,
+    theme: $('theme').value,
     updatedAt: Date.now()
   };
+  applyTheme(s.theme);
   seenUpdatedAt.settings = s.updatedAt;
   chrome.storage.local.set({ [STORAGE_KEY]: s });
   // Only switch views when the Default view setting itself changed — every
@@ -3120,6 +3152,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('delay').addEventListener('change', saveSettings);
   $('reloadAfterApply').addEventListener('change', saveSettings);
   $('defaultView').addEventListener('change', saveSettings);
+  $('theme').addEventListener('change', saveSettings);
   $('titleLinksEnabled').addEventListener('change', saveSettings);
 });
 

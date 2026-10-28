@@ -129,6 +129,8 @@ Amazon storefront shows.
 ## Settings
 
 Click the ⚙ button to adjust:
+- **Theme** — Auto (follows your system's light/dark setting), Light or
+  Dark.
 - **Delay between actions** — how long to wait between each bump step.
   Increase this if Amazon's page feels slow to respond and items get
   missed or duplicated.
