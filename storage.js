@@ -8,7 +8,8 @@
 // Sync has much tighter quotas than local (8 KB per item, 100 KB total,
 // 120 writes a minute), so labels are split across several items there:
 // `sfl_labels` holds the label list plus the number of item chunks, and
-// `sfl_labels_items_<n>` hold the item → label ids map. Every chunk carries
+// `sfl_labels_items_<n>` hold the item → label ids map (and
+// `sfl_labels_rules_<n>` the item → price target map, likewise). Every chunk carries
 // the `updatedAt` of the save it belongs to, so a reader on another computer
 // can tell when chunks from a newer save are still arriving.
 
@@ -20,45 +21,90 @@ const SYNC_DELETED_KEY = 'sfl_sync_deleted';
 // Same keys popup.js and content.js use in chrome.storage.local.
 const SYNCED_KEYS = { settings: 'sfl_settings', labels: 'sfl_labels' };
 const SYNC_LABEL_CHUNK_PREFIX = 'sfl_labels_items_';
+const SYNC_RULE_CHUNK_PREFIX = 'sfl_labels_rules_';
 const SYNC_CHUNK_MAX_BYTES = 7000; // under QUOTA_BYTES_PER_ITEM (8192), which counts key + JSON
+// Price-target fields left out of sync to save room in its 100 KB: just the
+// remembered thumbnail, which each computer fills back in the next time it
+// sees the item on the page (popup.js rememberRuleItem).
+const SYNC_SKIPPED_RULE_FIELDS = ['image'];
 
 function byteLength(str) {
   return new TextEncoder().encode(str).length;
 }
 
-function splitLabelsForSync(payload) {
-  const v = payload.updatedAt || 0;
-  const overhead = byteLength(SYNC_LABEL_CHUNK_PREFIX + '999' + JSON.stringify({ v, items: {} }));
+// Splits a key → value map into maps that each fit in one sync item.
+function chunkMap(map, prefix, v) {
+  const overhead = byteLength(prefix + '999' + JSON.stringify({ v, items: {} }));
   const chunks = [];
   let cur = {};
   let size = 0;
-  Object.entries(payload.items || {}).forEach(([key, ids]) => {
-    const entry = byteLength(JSON.stringify(key) + ':' + JSON.stringify(ids) + ',');
+  Object.entries(map || {}).forEach(([key, value]) => {
+    const entry = byteLength(JSON.stringify(key) + ':' + JSON.stringify(value) + ',');
     if (size && overhead + size + entry > SYNC_CHUNK_MAX_BYTES) {
       chunks.push(cur);
       cur = {};
       size = 0;
     }
-    cur[key] = ids;
+    cur[key] = value;
     size += entry;
   });
   if (size) chunks.push(cur);
-  const out = { [SYNCED_KEYS.labels]: { labels: payload.labels || [], updatedAt: v, chunks: chunks.length } };
+  return chunks;
+}
+
+function splitLabelsForSync(payload) {
+  const v = payload.updatedAt || 0;
+  const chunks = chunkMap(payload.items, SYNC_LABEL_CHUNK_PREFIX, v);
+  const rules = {};
+  Object.entries(payload.priceRules || {}).forEach(([id, rule]) => {
+    const slim = { ...rule };
+    SYNC_SKIPPED_RULE_FIELDS.forEach((f) => { delete slim[f]; });
+    rules[id] = slim;
+  });
+  const ruleChunks = chunkMap(rules, SYNC_RULE_CHUNK_PREFIX, v);
+  const out = {
+    [SYNCED_KEYS.labels]: { labels: payload.labels || [], updatedAt: v, chunks: chunks.length, ruleChunks: ruleChunks.length }
+  };
   chunks.forEach((items, i) => { out[SYNC_LABEL_CHUNK_PREFIX + i] = { v, items }; });
+  ruleChunks.forEach((items, i) => { out[SYNC_RULE_CHUNK_PREFIX + i] = { v, items }; });
   return out;
+}
+
+// The synced labels payload with this computer's own values of the fields
+// sync leaves out (SYNC_SKIPPED_RULE_FIELDS) put back on the targets both
+// sides have, so taking the synced copy doesn't lose them — which would
+// otherwise get them re-added, saved and uploaded again, back and forth
+// between computers.
+function withLocalRuleFields(synced, local) {
+  const localRules = (local && local.priceRules) || {};
+  const priceRules = {};
+  Object.entries(synced.priceRules || {}).forEach(([id, rule]) => {
+    const merged = { ...rule };
+    SYNC_SKIPPED_RULE_FIELDS.forEach((f) => {
+      if (localRules[id] && localRules[id][f] !== undefined && merged[f] === undefined) merged[f] = localRules[id][f];
+    });
+    priceRules[id] = merged;
+  });
+  return { ...synced, priceRules };
 }
 
 // Null if there's nothing synced yet, or a newer save is still arriving.
 function joinLabelsFromSync(all) {
   const meta = all[SYNCED_KEYS.labels];
   if (!meta) return null;
-  const items = {};
-  for (let i = 0; i < meta.chunks; i++) {
-    const chunk = all[SYNC_LABEL_CHUNK_PREFIX + i];
-    if (!chunk || chunk.v !== meta.updatedAt) return null;
-    Object.assign(items, chunk.items);
-  }
-  return { labels: meta.labels, items, updatedAt: meta.updatedAt };
+  const join = (prefix, count) => {
+    const map = {};
+    for (let i = 0; i < count; i++) {
+      const chunk = all[prefix + i];
+      if (!chunk || chunk.v !== meta.updatedAt) return null;
+      Object.assign(map, chunk.items);
+    }
+    return map;
+  };
+  const items = join(SYNC_LABEL_CHUNK_PREFIX, meta.chunks);
+  const priceRules = join(SYNC_RULE_CHUNK_PREFIX, meta.ruleChunks || 0);
+  if (!items || !priceRules) return null;
+  return { labels: meta.labels, items, priceRules, updatedAt: meta.updatedAt };
 }
 
 // { settings, labels } as currently synced, each null if absent, plus
@@ -93,17 +139,21 @@ async function writeSynced(name, value) {
   await chrome.storage.sync.set(entries);
   // Drop chunks left over from an earlier, larger save.
   const all = await chrome.storage.sync.get(null);
-  const stale = Object.keys(all).filter((k) => k.startsWith(SYNC_LABEL_CHUNK_PREFIX) && !(k in entries));
+  const stale = Object.keys(all).filter((k) =>
+    (k.startsWith(SYNC_LABEL_CHUNK_PREFIX) || k.startsWith(SYNC_RULE_CHUNK_PREFIX)) && !(k in entries));
   if (stale.length) await chrome.storage.sync.remove(stale);
 }
 
-// Labels payloads ({ labels, items }) compared by content, ignoring
+// Labels payloads ({ labels, items, priceRules }) compared by content, ignoring
 // updatedAt and the order items/ids happen to be stored in.
 function sameLabelData(a, b) {
   const canon = (p) => JSON.stringify({
     labels: p.labels || [],
     items: Object.entries(p.items || {})
       .map(([key, ids]) => [key, [...ids].sort()])
+      .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)),
+    priceRules: Object.entries(p.priceRules || {})
+      .map(([key, r]) => [key, r.labelId, r.min, r.max])
       .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))
   });
   return canon(a) === canon(b);

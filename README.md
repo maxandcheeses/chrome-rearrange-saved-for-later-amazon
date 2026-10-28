@@ -6,8 +6,8 @@ that order for real on amazon.com.
 
 No data is ever collected, shared, or sent to the developer or anyone
 else. Everything happens and is stored locally in your browser — unless
-you turn on the optional sync, which stores your settings and labels in
-your own Chrome account (see [Settings](#settings)).
+you turn on the optional sync, which stores your settings, labels and
+price targets in your own Chrome account (see [Settings](#settings)).
 
 ![Popup screenshot](screenshots/store-screenshot-1.png)
 
@@ -56,21 +56,74 @@ extension can actually do something.
 
 ## Labels
 
-Right-click an item to tag it with labels like "Grocery" or "Electronics"
-(click **＋ Label** to create one). An item can have several labels. Use the
-filter dropdown to show only items with a given label — reordering while
-filtered still moves items within your full list, and **Apply order**
-always applies the whole list. Turn on "Show interposing items" to also
-see, dimmed, the unlabeled items sitting between your filtered ones.
+Right-click an item to tag it with labels like "Grocery" or "Electronics".
+An item can have several labels. Use the filter dropdown to show only items
+with a given label — reordering while filtered still moves items within
+your full list, and **Apply order** always applies the whole list. Turn on
+"Show interposing items" to also see, dimmed, the unlabeled items sitting
+between your filtered ones.
 
-The same right-click menu has **Delete from Saved for later…**, which
-removes the item from your list on Amazon (after a confirmation) by
-clicking Amazon's own "Delete" link. This is permanent and can't be undone
-from the popup.
-Pick **Edit labels…** in the dropdown to rename, recolor, reorder, or delete
-labels — click **Done** to save your edits, or close the editor (✕, click
-outside, or Escape) to discard them. Labels are saved locally in your browser and stick to items
-across sessions.
+The filter dropdown also has **＋ New label…** and **✎ Edit labels…**. The
+editor renames, recolors, reorders, and deletes labels — click **Done** to
+save your edits, or close it (✕, click outside, or Escape) to discard them.
+Labels are saved locally in your browser and stick to items across
+sessions.
+
+The right-click menu also has **Open product page** and **Price history on
+camelcamelcamel** (both open in a background tab; nothing is sent to
+camelcamelcamel unless you click it), and **Delete from Saved for later…**,
+which removes the item from your list on Amazon (after a confirmation) by
+clicking Amazon's own "Delete" link. Deleting is permanent and can't be
+undone from the popup.
+
+## Price targets
+
+Right-click an item and pick **Label at a target price…** to have a label
+added automatically while the item's price is in a range you choose — a
+lowest price, a highest price, or both. An item can have several targets,
+e.g. "Good price" at $40 and "Buy now" at $20: the right-click menu lists
+each one to edit, plus **Add another price target…**. If the price later
+leaves the range, the label comes off again (unless the item already had
+it). Remove the label by hand while the price is in range and it stays off
+until the price leaves the range and comes back.
+
+Labels used for price targets are kept apart from your other labels: they
+have their own **Price target labels** group in the dropdowns and the label
+editor, and aren't in the item right-click menu. In the Saved for later
+list, each target shows as a pill with its target price (e.g. `$40.00`
+`$20.00`) next to the item's other labels, green while the current price is
+in range — hover it to see which label it applies and the current price.
+
+When a target is hit, a **Price target hit** notification shows at the top
+of the popup: **Edit** the target, **Dismiss** it until the price changes,
+or **Don't show again** (turn it back on by editing the target and ticking
+"Notify me").
+
+### Price targets tab
+
+Once you have a price target, a **Price targets** tab appears next to Saved
+for later, with one row per target — including items no longer in your
+list (dimmed, with the last price seen). Each row shows the target's label,
+the item's other labels, the target, the current price, and how far off it
+is ("$4.50 above target" in red, "$1.01 under target" in green). Drag rows
+(⠿) to arrange them; right-click a row to edit or delete the target, add
+another, or open the product page or its camelcamelcamel history. Its
+filter dropdown shows targets by status (in range, not in range, not on the
+page, notifications off) or by label, and its **＋ New label…** creates a
+price-target label. In the grid view the targets show as cards (or table
+rows) like your saved items, and hovering a thumbnail enlarges it on both
+tabs. If Amazon may not have loaded your whole list yet, the tab's footer
+offers **Load all**, since items that simply haven't loaded also show as
+"Not on this page". The popup reopens on whichever tab you were last on,
+until the cart page is refreshed.
+
+Prices are read from the cart page, so targets are only checked while the
+popup is open on your cart — there's no price tracking in the background.
+A target only works while its item is in your Saved for later list: once
+the item leaves the list (bought, moved to the cart, or deleted), its price
+isn't checked and it won't notify you, though the target stays on the Price
+targets tab until you delete it. Prices are in whatever currency your
+Amazon storefront shows.
 
 ## Settings
 
@@ -80,18 +133,22 @@ Click the ⚙ button to adjust:
   missed or duplicated.
 - **Refresh the page after applying the order** — reloads the page once
   reordering finishes, so you see the final result immediately.
-- **Sync settings and labels across your computers** — off by default.
-  When on, your settings and labels are kept in sync through your own
+- **Sync settings, labels and price targets across your computers** — off
+  by default. When on, your settings, labels and price targets are kept in
+  sync through your own
   Chrome account, on every computer where you're signed into Chrome with
   extension sync enabled and have this turned on. Nothing goes to the
   developer or anyone else. If both this computer and your Chrome account
-  already have different labels when you turn it on, you'll be asked which
-  to keep; after that, the most recent change wins. Chrome limits synced
-  data to 100 KB, which is a few thousand labeled items; past that, labels
-  keep working on each computer but stop syncing. Your in-progress
+  already have different labels or price targets when you turn it on,
+  you'll be asked which to keep; after that, the most recent change wins.
+  Chrome limits synced data to 100 KB — room for a few thousand labeled
+  items, or a few hundred price targets (each remembers its item's title
+  and link; thumbnails aren't synced and reappear once the item is seen
+  on the cart page). Past that, everything keeps working on each computer
+  but stops syncing. Your in-progress
   arrangement is never synced.
   - **Sync now** syncs right away instead of waiting for the next change.
-  - **Delete synced data…** removes your settings and labels from your
+  - **Delete synced data…** removes your settings, labels and price targets from your
     Chrome account and turns sync off on all your computers. Each computer
     keeps its own copy, and you can turn sync back on later.
 

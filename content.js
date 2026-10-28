@@ -30,6 +30,11 @@
   // effectively resets — which is the behavior we want.
   let pendingOrder = null;
 
+  // The popup tab ('saved' | 'targets') the user was last on, so reopening
+  // the popup returns there. In memory for the same reason as pendingOrder:
+  // it should last exactly as long as this page does.
+  let lastPopupTab = 'saved';
+
   // Set by SFL_CANCEL_APPLY while an apply is running; checked between bumps
   // so an in-flight bump always finishes cleanly rather than being torn off
   // mid-DOM-manipulation (which could strand an item in the cart).
@@ -293,6 +298,53 @@
     return null;
   }
 
+  // Turns Amazon's displayed price ("$1,234.56", "1.234,56 €", "￥1,234")
+  // into a number. With both separators present the last one is the
+  // decimal point; with only one, it's a decimal point only when followed
+  // by exactly two digits (so "1,234" is a thousand, "12,34" is twelve).
+  function parsePrice(text) {
+    const m = (text || '').match(/\d[\d.,\s ]*/);
+    if (!m) return null;
+    let s = m[0].replace(/[\s ]/g, '').replace(/[.,]$/, '');
+    const lastDot = s.lastIndexOf('.');
+    const lastComma = s.lastIndexOf(',');
+    let decimal = null;
+    if (lastDot !== -1 && lastComma !== -1) decimal = lastDot > lastComma ? '.' : ',';
+    else if (lastDot !== -1 || lastComma !== -1) {
+      const sep = lastDot !== -1 ? '.' : ',';
+      if (/^\d{2}$/.test(s.slice(s.lastIndexOf(sep) + 1)) && s.split(sep).length === 2) decimal = sep;
+    }
+    if (decimal) {
+      const [whole, frac] = [s.slice(0, s.lastIndexOf(decimal)), s.slice(s.lastIndexOf(decimal) + 1)];
+      s = `${whole.replace(/[.,]/g, '')}.${frac}`;
+    } else {
+      s = s.replace(/[.,]/g, '');
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // The item's current price as { amount, text }, or null if the row shows
+  // none (e.g. out of stock). Skips struck-through list prices
+  // (.a-text-price), and looks in the wider row like extractImage does.
+  function extractPrice(row) {
+    const selectors = [
+      '.sc-product-price',
+      '.a-price:not(.a-text-price) .a-offscreen',
+      '.sc-price'
+    ];
+    for (const scope of [row, findImageBoundary(row)]) {
+      for (const sel of selectors) {
+        for (const el of scope.querySelectorAll(sel)) {
+          const text = (el.textContent || '').trim();
+          const amount = parsePrice(text);
+          if (amount !== null) return { amount, text };
+        }
+      }
+    }
+    return null;
+  }
+
   function findActionLink(row, matcherFn) {
     const candidates = Array.from(row.querySelectorAll(ACTION_SELECTOR));
     return candidates.find(matcherFn);
@@ -308,7 +360,11 @@
       const asin = extractAsin(row);
       const key = asin || `idx-${idx}-${extractTitle(row)}`;
       itemsByKey.set(key, { rowEl: row, titleText: extractTitle(row) });
-      items.push({ key, title: extractTitle(row), image: extractImage(row), url: extractUrl(row) });
+      const price = extractPrice(row);
+      items.push({
+        key, title: extractTitle(row), image: extractImage(row), url: extractUrl(row),
+        price: price ? price.amount : null, priceText: price ? price.text : null
+      });
     });
     return items;
   }
@@ -792,6 +848,17 @@
 
     if (msg.type === 'SFL_GET_PENDING_ORDER') {
       sendResponse({ order: pendingOrder });
+      return;
+    }
+
+    if (msg.type === 'SFL_SET_LAST_TAB') {
+      lastPopupTab = msg.tab === 'targets' ? 'targets' : 'saved';
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === 'SFL_GET_LAST_TAB') {
+      sendResponse({ tab: lastPopupTab });
       return;
     }
   });

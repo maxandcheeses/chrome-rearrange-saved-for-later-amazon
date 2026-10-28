@@ -27,6 +27,116 @@
   }
   #headerActions button:hover { background: #e3e6e6; }
   #msg { color: #565959; font-size: 12px; margin: 5px 0; }
+  /* Shown only while at least one price target exists (renderPriceTargets). */
+  .tabBar { display: flex; gap: 4px; border-bottom: 1px solid #d5d9d9; margin: 4px 0 6px; }
+  .tabBar[hidden] { display: none; }
+  #tabBarModal { margin: 0; padding: 4px 14px 0; flex-shrink: 0; }
+  .tabBtn {
+    padding: 5px 10px; font-size: 12px; background: none; border: none; border-bottom: 2px solid transparent;
+    border-radius: 0; color: #565959; box-shadow: none; margin-bottom: -1px; cursor: pointer;
+  }
+  .tabBtn:hover { color: #0f1111; }
+  .tabBtn.active { color: #0f1111; font-weight: 600; border-bottom-color: #e77600; }
+  .targetsPanel { display: none; }
+  .targetsPanel .hint { font-size: 11px; color: #565959; margin: 0 0 6px; }
+  body.tab-targets .targetsPanel { display: block; }
+  #targetsPanelModal { flex: 1; min-height: 0; overflow-y: auto; }
+  /* The targets tab reuses the saved tab's slots so nothing moves: its hint
+     takes #msg's place, and its filter takes the label controls' place in
+     the same .labelBar (compact bar and grid header). */
+  #targetsHint { display: none; color: #565959; font-size: 12px; margin: 5px 0; }
+  body.tab-targets #targetsHint { display: block; }
+  .labelBar .targetsFilter { display: none; }
+  body.tab-targets .labelBar .targetsFilter { display: block; }
+  /* As tall as with the interposing-items button showing, so the row (and
+     the dropdown centered in it) doesn't shift as that comes and goes or
+     between tabs. */
+  #labelBar { min-height: 24px; }
+  body.tab-targets .labelBar > :not(.targetsFilter),
+  body.tab-targets #msg, body.tab-targets #list, body.tab-targets #actions,
+  body.tab-targets #incompleteBanner, body.tab-targets #cartSection,
+  body.tab-targets #tileGrid, body.tab-targets #gridModalFooter { display: none !important; }
+  #targetsList { box-sizing: border-box; list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; border: 1px solid #d5d9d9; border-radius: 8px; }
+  /* Compact popup: rows like #list. */
+  #targetsList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  #targetsList li:last-child { border-bottom: none; }
+  #targetsList li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
+  #targetsList li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
+  #targetsList .imgwrap { width: 36px; height: 36px; flex-shrink: 0; background: #f5f5f5; border-radius: 4px; }
+  #targetsList img { width: 36px; height: 36px; object-fit: contain; }
+  /* Grid view: cards laid out exactly like #tileGrid's tiles (same columns,
+     zoom, gaps and card style), or its table view's rows when that's on. */
+  #targetsListModal {
+    /* Fills the panel like #tileGrid fills the modal, so a single row of
+       cards stretches (and the table view's box reaches the bottom) the same. */
+    min-height: 100%; box-sizing: border-box;
+    list-style: none; margin: 0; padding: 8px 10px; display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(var(--tile-min, 150px), 1fr));
+  }
+  #targetsListModal li {
+    display: flex; flex-direction: column; gap: 4px;
+    background: #fff; border: 1px solid #d5d9d9; border-radius: 10px; padding: 8px;
+  }
+  #targetsListModal li .handle { display: none; }
+  #targetsListModal li.drag-over-before { box-shadow: inset 2px 0 0 0 #e77600; }
+  #targetsListModal li.drag-over-after { box-shadow: inset -2px 0 0 0 #e77600; }
+  #targetsListModal .imgwrap {
+    display: flex; align-items: center; justify-content: center;
+    height: var(--tile-img, 100px); margin: 2px 0; background: #f5f5f5; border-radius: 6px; flex-shrink: 0;
+  }
+  #targetsListModal img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  #targetsListModal .target-main .title {
+    font-size: 12px; line-height: 1.3; white-space: normal; display: -webkit-box;
+    -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  }
+  #targetsListModal li.filter-empty { grid-column: 1 / -1; }
+  #targetsListModal.table-view {
+    display: block; border: 1px solid #d5d9d9; border-radius: 8px; width: 100%; box-sizing: border-box;
+  }
+  #targetsListModal.table-view li {
+    flex-direction: row; align-items: center; gap: 8px;
+    border: none; border-radius: 0; border-bottom: 1px solid #eee; padding: 2px 16px 2px 10px;
+  }
+  #targetsListModal.table-view li:last-child { border-bottom: none; }
+  #targetsListModal.table-view li .handle { display: block; }
+  #targetsListModal.table-view li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
+  #targetsListModal.table-view li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
+  #targetsListModal.table-view .imgwrap { width: 24px; height: 24px; margin: 0; }
+  #targetsListModal.table-view .target-main { flex-direction: row; align-items: center; gap: 8px; }
+  #targetsListModal.table-view .target-main .title { display: block; flex: 1; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
+  #targetsListModal.table-view .target-meta { flex-wrap: nowrap; flex-shrink: 0; }
+  /* Both. */
+  .targetsList li.filter-empty { justify-content: center; color: #565959; font-size: 12px; padding: 14px 8px; cursor: default; }
+  .targetsList li[draggable="true"] { cursor: grab; user-select: none; }
+  .targetsList li.drag-source { opacity: 0.35; }
+  .targetsList .handle { color: #999; flex-shrink: 0; }
+  .targetsList li.off-page .imgwrap, .targetsList li.off-page .target-main { opacity: 0.6; }
+  .target-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .target-main .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .target-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 11px; color: #565959; }
+  /* Notification cards for price targets that are in range (renderPriceAlerts). */
+  .priceAlerts { display: flex; flex-direction: column; gap: 6px; margin: 0 0 6px; max-height: 150px; overflow-y: auto; }
+  .priceAlerts[hidden] { display: none; }
+  #priceAlertsModal { margin: 6px 14px 0; flex-shrink: 0; }
+  .price-alert {
+    display: flex; flex-direction: column; gap: 6px; padding: 7px 10px;
+    background: #f0faf6; border: 1px solid #067d62; border-radius: 8px; font-size: 12px;
+  }
+  body.grid-mode #priceAlertsModal .price-alert { flex-direction: row; align-items: center; justify-content: space-between; }
+  .price-alert-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .price-alert-text strong { color: #067d62; font-size: 11px; }
+  .price-alert-text .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .price-alert-detail { font-size: 11px; color: #565959; }
+  .price-alert-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .price-alert-actions button {
+    padding: 3px 10px; font-size: 11px; background: #fff; border: 1px solid #d5d9d9; border-radius: 999px;
+    box-shadow: none; color: #0f1111;
+  }
+  .price-alert-actions button:hover { background: #f0f2f2; }
+  #dialog .price-rule-notify { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+  #dialog .price-rule-notify input { margin: 0; }
+  .target-gap { font-weight: 600; color: #b12704; }
+  .target-gap.hit { color: #067d62; }
   #msg.warning { color: #915400; }
   #msg.loading { font-weight: bold; color: #0f1111; }
   #incompleteBanner {
@@ -34,7 +144,20 @@
     background: #fef8f0; border: 1px solid #f0c37b; color: #7a4a00;
     border-radius: 8px; padding: 5px 10px; margin-top: 5px; font-size: 11px;
   }
-  #incompleteBanner button {
+  /* Targets tab's own "Load all" prompt (unloaded items look "Not on this
+     page" there). While loading, it shows the progress text instead, since
+     #msg / the grid footer are hidden on that tab. */
+  .targetsLoadBanner {
+    display: none; align-items: center; justify-content: space-between; gap: 8px;
+    background: #fef8f0; border: 1px solid #f0c37b; color: #7a4a00;
+    border-radius: 8px; padding: 5px 10px; margin-top: 6px; font-size: 11px;
+  }
+  body.tab-targets.items-incomplete .targetsLoadBanner,
+  body.tab-targets.msg-loading .targetsLoadBanner { display: flex; }
+  .targetsLoadingText { display: none; font-weight: 600; color: #0f1111; }
+  body.msg-loading .targetsLoadingText { display: inline; }
+  body.msg-loading .targetsLoadText, body.msg-loading .loadAllBtnTargets { display: none; }
+  #incompleteBanner button, .targetsLoadBanner button {
     flex-shrink: 0; padding: 4px 10px; font-size: 11px; background: #fff; border: 1px solid #d5d9d9; border-radius: 16px;
   }
   #list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; border: 1px solid #d5d9d9; border-radius: 8px; }
@@ -298,6 +421,23 @@
     font-size: 10.5px; line-height: 1.3; color: #767676; text-align: center;
   }
   #popupFooter:empty { display: none; }
+  /* The Price targets tab's own footer, in place of #popupFooter's tip. */
+  .targetsFooter {
+    display: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid #eee;
+    font-size: 10.5px; line-height: 1.3; color: #767676; text-align: center;
+  }
+  body.tab-targets .targetsFooter { display: block; }
+  /* Always visible: pinned to the bottom of the popup when it scrolls, and
+     outside the scrolling panel in the grid view. */
+  #targetsFooter { position: sticky; bottom: -12px; margin-bottom: -12px; padding-bottom: 12px; background: #fff; }
+  /* min-height is set to #gridModalFooter's height (matchTargetsFooterHeight). */
+  #targetsFooterModal {
+    flex-shrink: 0; margin: 0; padding: 6px 14px; box-sizing: border-box;
+    flex-direction: column; justify-content: center;
+  }
+  body.tab-targets #targetsFooterModal { display: flex; }
+  .targetsFooter .targetsLoadBanner { margin: 0 0 5px; text-align: left; }
+  body.tab-targets #popupFooter { display: none; }
 
   /* Labels: filter bar (compact view + grid header), chips on items. */
   .labelBar { display: flex; align-items: center; gap: 6px; }
@@ -336,8 +476,23 @@
   .label-c5 { background: #fff3b8; color: #6b5900; }
   .label-c6 { background: #dfe8f6; color: #1f4b8a; }
   .label-c7 { background: #ececec; color: #3b3f3f; }
+  /* Price pills: a target's price (saved list, one per target, among the label
+     chips) or the current price (Price targets tab); .hit while in range. */
+  .price-tag {
+    flex-shrink: 0; font-size: 10px; line-height: 1.5; padding: 0 6px; border-radius: 999px;
+    border: 1px solid #d5d9d9; color: #565959; white-space: nowrap;
+  }
+  .price-tag.hit { border-color: #067d62; color: #067d62; font-weight: 600; }
+  .price-rule-range { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; }
+  .price-rule-range input { flex: 1; min-width: 0; }
+  #dialog .price-rule-label { display: block; font-size: 12px; margin: 0 0 4px; }
+  #dialog .price-rule-new { margin-top: 6px; }
+  #dialog .price-rule-note { font-size: 11px; color: #565959; margin: 8px 0 0; }
+  #dialog .price-rule-error { font-size: 11px; color: #c40000; margin: 6px 0 0; }
   .label-editor { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
   .label-editor-row { display: flex; align-items: center; gap: 8px; }
+  .label-editor-section { margin: 4px 0 0; font-size: 11px; font-weight: 600; color: #565959; }
+  .label-editor-section:first-child { margin-top: 0; }
   .label-editor-handle { flex-shrink: 0; color: #999; cursor: grab; padding: 0 2px; user-select: none; }
   .label-editor-row.drag-source { opacity: 0.35; }
   .label-editor-row.drag-over-before { box-shadow: 0 -2px 0 0 #e77600; }
@@ -392,6 +547,7 @@
   }
   #ctxMenu button:hover { background: #f0f2f2; }
   #ctxMenu button.danger { color: #c40000; }
+  #ctxMenu .ctx-icon { width: 12px; height: 12px; margin-left: 5px; vertical-align: -1px; fill: currentColor; color: #565959; }
   #ctxMenu hr { border: none; border-top: 1px solid #eee; margin: 4px 0; }
 
   /* Popup windows size themselves to their content, and fixed-position
@@ -417,12 +573,12 @@
   }
   #dialogCloseBtn:hover { background: #e3e6e6; }
   #dialog p { margin: 0 0 8px; font-size: 12px; }
-  #dialog input[type="text"], #dialog select {
+  #dialog input[type="text"], #dialog input[type="number"], #dialog select {
     width: 100%; box-sizing: border-box; border: 1px solid #949494; border-radius: 8px;
     padding: 5px 8px; font-family: inherit; font-size: 13px;
   }
   #dialog select { padding-right: 28px; }
-  #dialog input[type="text"]:focus, #dialog select:focus {
+  #dialog input[type="text"]:focus, #dialog input[type="number"]:focus, #dialog select:focus {
     outline: none; border-color: #e77600; box-shadow: 0 0 0 3px rgba(228, 121, 17, 0.5);
   }
   #dialogActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
@@ -472,15 +628,24 @@
       <button id="settingsBtn" title="Settings">⚙</button>
     </div>
   </div>
+  <div id="tabBar" class="tabBar" role="tablist" hidden>
+    <button type="button" role="tab" class="tabBtn savedTabBtn">Saved for later</button>
+    <button type="button" role="tab" class="tabBtn targetsTabBtn">Price targets</button>
+  </div>
+  <div id="priceAlerts" class="priceAlerts" hidden></div>
   <div id="msg"></div>
+  <div id="targetsHint"></div>
 
   <div id="labelBar" class="labelBar">
     <select id="labelFilter" title="Show only items with this label"></select>
     <button type="button" id="inBetweenBtn" class="labelIconBtn inBetweenBtn" title="Show interposing items" aria-label="Show interposing items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15,2A7,7 0 0,1 22,9C22,11.71 20.46,14.05 18.22,15.22C17.55,16.5 16.5,17.55 15.22,18.22C14.05,20.46 11.71,22 9,22A7,7 0 0,1 2,15C2,12.29 3.54,9.95 5.78,8.78C6.45,7.5 7.5,6.45 8.78,5.78C9.95,3.54 12.29,2 15,2M12,19A7,7 0 0,1 5,12C4.37,12.84 4,13.87 4,15A5,5 0 0,0 9,20C10.13,20 11.16,19.63 12,19M15,16A7,7 0 0,1 8,9H8C7.37,9.84 7,10.87 7,12A5,5 0 0,0 12,17C13.13,17 14.16,16.63 15,16V16M15,4C13.87,4 12.84,4.37 12,5V5A7,7 0 0,1 19,12H19C19.63,11.16 20,10.13 20,9A5,5 0 0,0 15,4M10,9A5,5 0 0,0 15,14C15.6,14 16.17,13.9 16.7,13.7C16.9,13.17 17,12.6 17,12A5,5 0 0,0 12,7C11.4,7 10.83,7.1 10.3,7.3C10.1,7.83 10,8.4 10,9Z"/></svg></button>
-    <button type="button" id="addLabelBtn" class="labelAddBtn" title="Create a label (e.g. Grocery, Recurring, Electronics)">＋ Label</button>
+    <select class="targetsFilter" title="Show only price targets that match" aria-label="Filter price targets"></select>
   </div>
 
   <ul id="list"></ul>
+  <div id="targetsPanel" class="targetsPanel" role="tabpanel">
+    <ul id="targetsList" class="targetsList"></ul>
+  </div>
 
   <div id="gridModal">
     <div id="gridModalHeader">
@@ -494,13 +659,29 @@
       <div class="labelBar">
         <select id="labelFilterModal" title="Show only items with this label"></select>
         <button type="button" id="inBetweenBtnModal" class="labelIconBtn inBetweenBtn" title="Show interposing items" aria-label="Show interposing items"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15,2A7,7 0 0,1 22,9C22,11.71 20.46,14.05 18.22,15.22C17.55,16.5 16.5,17.55 15.22,18.22C14.05,20.46 11.71,22 9,22A7,7 0 0,1 2,15C2,12.29 3.54,9.95 5.78,8.78C6.45,7.5 7.5,6.45 8.78,5.78C9.95,3.54 12.29,2 15,2M12,19A7,7 0 0,1 5,12C4.37,12.84 4,13.87 4,15A5,5 0 0,0 9,20C10.13,20 11.16,19.63 12,19M15,16A7,7 0 0,1 8,9H8C7.37,9.84 7,10.87 7,12A5,5 0 0,0 12,17C13.13,17 14.16,16.63 15,16V16M15,4C13.87,4 12.84,4.37 12,5V5A7,7 0 0,1 19,12H19C19.63,11.16 20,10.13 20,9A5,5 0 0,0 15,4M10,9A5,5 0 0,0 15,14C15.6,14 16.17,13.9 16.7,13.7C16.9,13.17 17,12.6 17,12A5,5 0 0,0 12,7C11.4,7 10.83,7.1 10.3,7.3C10.1,7.83 10,8.4 10,9Z"/></svg></button>
-        <button type="button" id="addLabelBtnModal" class="labelAddBtn" title="Create a label (e.g. Grocery, Recurring, Electronics)">＋ Label</button>
+        <select class="targetsFilter" title="Show only price targets that match" aria-label="Filter price targets"></select>
       </div>
       <button type="button" id="tableViewBtn" title="Switch to table view">☰</button>
       <button type="button" id="settingsBtnModal" title="Settings">⚙</button>
       <button type="button" id="closeGridBtn" title="Close grid view">✕</button>
     </div>
+    <div id="tabBarModal" class="tabBar" role="tablist" hidden>
+      <button type="button" role="tab" class="tabBtn savedTabBtn">Saved for later</button>
+      <button type="button" role="tab" class="tabBtn targetsTabBtn">Price targets</button>
+    </div>
+    <div id="priceAlertsModal" class="priceAlerts" hidden></div>
     <ul id="tileGrid"></ul>
+    <div id="targetsPanelModal" class="targetsPanel" role="tabpanel">
+      <ul id="targetsListModal" class="targetsList"></ul>
+    </div>
+    <div id="targetsFooterModal" class="targetsFooter">
+      <div class="targetsLoadBanner" role="status">
+        <span class="targetsLoadText">⚠ Not every saved item may have loaded yet, so some targets can show as “Not on this page”.</span>
+        <span class="targetsLoadingText"></span>
+        <button type="button" class="loadAllBtnTargets">Load all</button>
+      </div>
+      <span class="targetsFooterHint">Includes items no longer on this page. Drag ⠿ to arrange; right-click a saved item to add a target.</span>
+    </div>
     <div id="gridModalFooter">
       <div id="gridModalFooterMsgs">
         <span id="modalMsg"></span>
@@ -569,12 +750,12 @@
 
     <div class="checkbox-row">
       <input type="checkbox" id="syncEnabled">
-      <label for="syncEnabled">Sync settings and labels across your computers</label>
+      <label for="syncEnabled">Sync settings, labels and price targets across your computers</label>
     </div>
     <p class="hint">Uses your own Chrome sync, so it needs you signed into Chrome with extension sync on. Nothing is shared with anyone else.</p>
     <div class="sync-actions">
       <button type="button" id="syncNowBtn" title="Sync with your Chrome account right away" disabled>Sync now</button>
-      <button type="button" id="deleteSyncBtn" title="Remove your settings and labels from your Chrome account">Delete synced data…</button>
+      <button type="button" id="deleteSyncBtn" title="Remove your settings, labels and price targets from your Chrome account">Delete synced data…</button>
     </div>
     <p id="syncStatus" class="hint" role="status"></p>
 
@@ -588,6 +769,14 @@
   </div>
 
   <div id="popupFooter"></div>
+  <div id="targetsFooter" class="targetsFooter">
+    <div class="targetsLoadBanner" role="status">
+      <span class="targetsLoadText">⚠ Not every saved item may have loaded yet, so some targets can show as “Not on this page”.</span>
+      <span class="targetsLoadingText"></span>
+      <button type="button" class="loadAllBtnTargets">Load all</button>
+    </div>
+    <span class="targetsFooterHint">Includes items no longer on this page. Drag ⠿ to arrange; right-click a saved item to add a target.</span>
+  </div>
 
   <div id="ctxMenu" role="menu"></div>
 

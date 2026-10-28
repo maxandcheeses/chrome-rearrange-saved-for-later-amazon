@@ -75,7 +75,7 @@ async function reconcile() {
       const r = remote[name];
       const lt = l ? l.updatedAt || 0 : -1;
       const rt = r ? r.updatedAt || 0 : -1;
-      if (rt > lt) toLocal[SYNCED_KEYS[name]] = r;
+      if (rt > lt) toLocal[SYNCED_KEYS[name]] = name === 'labels' ? withLocalRuleFields(r, l) : r;
       else if (lt > rt) await writeSynced(name, l);
     }
     if (Object.keys(toLocal).length) await chrome.storage.local.set(toLocal);

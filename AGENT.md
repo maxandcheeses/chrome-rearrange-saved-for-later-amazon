@@ -62,8 +62,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   affect ordering: drag/typed-position reordering while filtered still
   moves items within the full `order`, badges keep showing real positions,
   and Apply always applies the full list. Stored in `chrome.storage.local`
-  under `sfl_labels` as `{ labels: [{id, name, color}], items: {key: [ids]} }`
-  — keyed by item key (the ASIN), so labels follow items across sessions.
+  under `sfl_labels` as `{ labels: [{id, name, color, target?}],
+  items: {key: [ids]}, priceRules: {id: rule}, updatedAt }` — keyed by
+  item key (the ASIN), so labels follow items across sessions.
   Deliberately chrome.storage rather than content-script memory like
   `pendingOrder`: labels are user-curated data meant to persist, not a
   transient pending action. "Show interposing items" (the toggle next to
@@ -76,6 +77,77 @@ Chrome sync account. Keep any privacy wording consistent with that.
   backdrop, Escape — all routed through `dismissDialog`) restores the
   snapshot (`discardLabelEdit`). Closing the popup mid-edit also loses
   them, since nothing was saved.
+  Right-click menus (`openItemMenu` for saved items, `openTargetMenu` for
+  Price targets rows; built by `openContextMenu`, whose entries can carry an
+  SVG `icon`) also offer "Open product page" (`openProductEntry`) and
+  "Price history on camelcamelcamel" (`camelEntry`/`camelUrl`, mapped per
+  storefront in `CAMEL_HOSTS`, hidden for non-ASIN keys or uncovered
+  stores), both opened in a background tab so the popup stays open.
+- Price targets (`popup.js`, "Price targets" section) — rules that add a
+  label while an item's price is in a range.
+  - Data: `priceRules` maps target id (`newTargetId`) to `{ key, labelId,
+    min, max, applied, added, muted, dismissedPrice, rank }` plus the item's
+    remembered `title`/`url`/`image`/`price`/`priceText`; either bound may
+    be null. An item can have several targets (`itemTargetIds`).
+    `loadLabels` converts the earlier one-per-item format (keyed by item
+    key, no `key` field). Rules live in `sfl_labels`, so they're saved,
+    synced and undone with labels: part of `snapshotState`, and every user
+    edit is an undo step, but automatic (re)labeling isn't.
+  - Prices: `content.js` scrapes each saved row (`extractPrice`/
+    `parsePrice`: locale-aware separators, skips struck-through
+    `.a-text-price`) into the item's `price`/`priceText`. `applyPriceRules`
+    runs after every scan (`fetchItems` and the watcher) — so only while the
+    popup is open on the cart; no background checking. `applied` = fired for
+    the current in-range stretch (a label removed by hand stays off until
+    the price leaves and re-enters); `added` = the target put the label on,
+    so it only removes labels it added, and not while another applied
+    target of the item holds the same label (`labelHeldByOtherTarget`).
+    `rememberRuleItem` copies item details onto the rule when they change
+    (links shortened to `/dp/<ASIN>` by `shortProductUrl`) so off-page
+    targets can still be shown — the only price data stored.
+  - Price-target labels (`priceTargetLabelIds`: labels created with
+    `target: true` — from the targets tab's dropdown "＋ New label…" or the
+    dialog's "New label…" — plus any a rule uses) are kept apart from
+    general ones: their own optgroup in both filter dropdowns, their own
+    section of the label editor (first when opened from the targets tab;
+    rows reorder within a section only), first in the target dialog, and
+    left out of the item right-click menu. Deleting a label retargets or
+    drops rules pointing to it.
+  - Saved list: each target is a pill with its target price among the label
+    chips (`makePriceTags`; label and current price on hover), and its label
+    isn't repeated as a chip. Notifications (`renderPriceAlerts`, both
+    views) are in-popup cards per in-range target, not `chrome.notifications`:
+    "Dismiss" stores `dismissedPrice` (cleared on any price change), "Don't
+    show again" sets `muted` (the dialog's "Notify me" clears it).
+  - Price targets tab (`renderPriceTargets`, called from `renderList`): one
+    row per target, shown only while a rule exists (`#tabBar` and its grid
+    copy `#tabBarModal`); `body.tab-targets` hides the saved-list UI.
+    "On the page" = in `order`, so not-yet-lazy-loaded items count as
+    off-page — hence the footer's own Load all banner. Rows are in the
+    user's order (drag; `moveTarget`), kept as `rank` on each rule so it
+    syncs; rules without one sort last. Its filter (`targetFilter`: status,
+    `label:<id>` for a target's own label, `item:<id>` for a general label
+    on its item) is display-only like `labelFilter`. Both tabs' dropdowns
+    share one layout (`appendLabelGroups` / `appendFilterActions` /
+    `onFilterAction`: fixed filters, Labels and Price target labels groups,
+    then "＋ New label…" and "✎ Edit labels…").
+  - Layout parity: the targets dropdown (`.targetsFilter`) lives inside the
+    saved tab's own `.labelBar`s (fixed 24px tall), `#targetsHint` (a
+    summary given `#msg`'s height on switch) sits in `#msg`'s slot, and the
+    compact targets list is sized on switch so the popup keeps its height
+    (`setActiveTab`, measuring content height since the popup caps at
+    600px). In the grid view, `#targetsListModal` mirrors `#tileGrid` —
+    cards in the same zoomable grid, or its table view (`setTableView`
+    toggles both) — and the footer (`#targetsFooterModal`, with the Load all
+    banner and help text) takes `#gridModalFooter`'s height
+    (`matchTargetsFooterHeight`). The compact footer (`#targetsFooter`) is
+    sticky so it's always visible.
+  - Sync: rules are chunked under `sfl_labels_rules_<n>` (counted by
+    `ruleChunks` on the meta item). To fit more in sync's 100 KB, they go up
+    without `image` (`SYNC_SKIPPED_RULE_FIELDS`); whoever takes the synced
+    copy (background `reconcile`, or "Synced" when turning sync on) merges
+    its own images back in (`withLocalRuleFields`), so they aren't lost and
+    re-uploaded in a loop between computers.
 - Undo/redo (`popup.js`, "Undo / redo" section) — snapshots of the
   arrangement and labels taken before each change (`recordChange`), bound
   to the toolbar buttons and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Shift+Z / Ctrl+Y
@@ -134,7 +206,11 @@ Chrome sync account. Keep any privacy wording consistent with that.
   order). Communicates with `popup.js` over `chrome.runtime.onMessage`
   using message types prefixed `SFL_*` (`SFL_PING`, `SFL_GET_ITEMS`,
   `SFL_GET_LOAD_STATUS`, `SFL_GET_STATUS`, `SFL_APPLY_ORDER`,
-  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`, `SFL_DELETE_ITEM`).
+  `SFL_SET_PENDING_ORDER`, `SFL_GET_PENDING_ORDER`, `SFL_DELETE_ITEM`,
+  `SFL_SET_LAST_TAB`, `SFL_GET_LAST_TAB`). The last two hold which popup
+  tab (Saved for later / Price targets) the user was on, in content-script
+  memory like `pendingOrder`, so reopening the popup returns there until
+  the page reloads (`restoreLastTab`, once per popup opening).
   `SFL_DELETE_ITEM` (from the item right-click menu, `openItemMenu` in
   `popup.js`) clicks Amazon's "Delete" control on a saved row
   (`isDeleteElement` — matches whole control text, not substrings, since

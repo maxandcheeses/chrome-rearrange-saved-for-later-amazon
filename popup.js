@@ -36,8 +36,12 @@ const TILE_SIZES = { s: { min: '110px', img: '70px' }, m: { min: '150px', img: '
 const LABELS_STORAGE_KEY = 'sfl_labels';
 const LABEL_COLORS = 8; // see .label-c0 … .label-c7 in popup.html
 const LABEL_NAME_MAX = 40;
-let labels = []; // [{ id, name, color }]
+let labels = []; // [{ id, name, color, target }] — target: made as a price-target label
 let labelsOf = new Map(); // item key -> Set of label ids
+// target id -> { key, labelId, min, max, applied, added, muted,
+// dismissedPrice, rank, title, url, image, price, priceText } — see "Price
+// targets". `key` is the item's; an item can have several targets.
+let priceRules = new Map();
 let labelFilter = 'all'; // 'all' | 'none' | label id
 // While the label editor is open: the state from before it opened. Edits
 // made in it show up live but aren't saved or recorded as undo steps until
@@ -55,6 +59,11 @@ let selectedKeys = new Set();
 // when reordering. Deliberately not persisted, and reset whenever the
 // filter changes — it always starts off.
 let showInBetween = false;
+let activeTab = 'saved'; // 'saved' | 'targets' — see renderPriceTargets
+// Price targets tab filter: 'all' | 'hit' | 'miss' | 'offpage' | 'muted' |
+// 'label:<id>' (the target's own label) | 'item:<id>' (a general label on the target's item).
+// Display-only and not persisted, like labelFilter.
+let targetFilter = 'all';
 
 function $(id) { return document.getElementById(id); }
 
@@ -165,12 +174,13 @@ function renderList() {
 
     const title = makeTitleEl(item, key);
 
-    li.append(badge, handle, img, title, makeLabelChips(key));
+    li.append(badge, handle, img, title, makeLabelChips(key, true));
     listEl.appendChild(li);
   });
   appendFilterEmptyNote(listEl);
   attachDragHandlers();
   renderTileGrid();
+  renderPriceTargets();
 }
 
 // Tile-based view shown alongside the plain list (toggled via body.grid-mode
@@ -231,7 +241,7 @@ function renderTileGrid() {
     handle.className = 'handle';
     handle.textContent = '⠿';
 
-    li.append(badge, handle, imgWrap, title, makeLabelChips(key));
+    li.append(badge, handle, imgWrap, title, makeLabelChips(key, true));
     gridEl.appendChild(li);
   });
   appendFilterEmptyNote(gridEl);
@@ -262,6 +272,7 @@ function applyTileSize(size, persist = true) {
 function setTableView(on, persist = true) {
   tableView = on;
   $('tileGrid').classList.toggle('table-view', on);
+  $('targetsListModal').classList.toggle('table-view', on);
   const btn = $('tableViewBtn');
   btn.classList.toggle('active', on);
   btn.textContent = on ? '▦' : '☰';
@@ -280,7 +291,7 @@ function setTableView(on, persist = true) {
 // immediately, so scanning across items doesn't pay the delay every time.
 const IMAGE_PREVIEW_DELAY_MS = 500;
 const IMAGE_PREVIEW_WARM_MS = 400;
-const PREVIEW_IMG_SELECTOR = '#list img, #tileGrid img, #cartList img';
+const PREVIEW_IMG_SELECTOR = '#list img, #tileGrid img, #cartList img, .targetsList img';
 let previewTimer = null;
 let previewTarget = null;
 let previewWarmUntil = 0;
@@ -424,6 +435,7 @@ function setupTooltips() {
 function setGridMode(on) {
   gridMode = on;
   document.body.classList.toggle('grid-mode', on);
+  matchTargetsFooterHeight();
 }
 
 // Chrome caps popups at 800x600 screen pixels, so at a page zoom above 100%
@@ -531,8 +543,13 @@ function snapshotState() {
   return {
     order: order.slice(),
     labels: labels.map((l) => ({ ...l })),
-    labelsOf: [...labelsOf].map(([key, ids]) => [key, [...ids]])
+    labelsOf: [...labelsOf].map(([key, ids]) => [key, [...ids]]),
+    priceRules: [...priceRules].map(([key, rule]) => [key, { ...rule }])
   };
+}
+
+function restorePriceRules(snap) {
+  priceRules = new Map((snap.priceRules || []).map(([key, rule]) => [key, { ...rule }]));
 }
 
 // Records `before` as an undo step if anything actually changed since it
@@ -556,6 +573,7 @@ function restoreState(snap) {
   order = kept.concat(order.filter((k) => !keptSet.has(k)));
   labels = snap.labels.map((l) => ({ ...l }));
   labelsOf = new Map(snap.labelsOf.map(([key, ids]) => [key, new Set(ids)]));
+  restorePriceRules(snap);
   commitLabelChange();
   updateApplyButton();
   persistOrder();
@@ -592,6 +610,19 @@ function updateHistoryButtons() {
 }
 
 // ---- Labels ----
+
+// Ids of price-target labels: ones made for price targets (`target`, e.g.
+// from the Price targets tab's "＋ Label") plus any some target applies.
+// They're kept apart from the
+// general labels: listed after them (with a divider) in the filter and the
+// label editor, first in the price-target dialog, and left out of the item
+// right-click menu.
+function priceTargetLabelIds() {
+  return new Set([
+    ...labels.filter((l) => l.target).map((l) => l.id),
+    ...[...priceRules.values()].map((r) => r.labelId)
+  ]);
+}
 
 function getLabel(id) {
   return labels.find((l) => l.id === id);
@@ -632,6 +663,14 @@ function loadLabels() {
         const valid = (ids || []).filter((id) => getLabel(id));
         if (valid.length) labelsOf.set(key, new Set(valid));
       });
+      priceRules = new Map();
+      Object.entries(saved.priceRules || {}).forEach(([id, rule]) => {
+        if (!rule || !getLabel(rule.labelId)) return;
+        // Targets saved before items could have several were keyed by the
+        // item's key, with no `key` field of their own.
+        if (rule.key) priceRules.set(id, { ...rule });
+        else priceRules.set(newTargetId(), { ...rule, key: id });
+      });
       resolve();
     });
   });
@@ -640,9 +679,10 @@ function loadLabels() {
 function saveLabels() {
   const items = {};
   labelsOf.forEach((ids, key) => { if (ids.size) items[key] = [...ids]; });
+  const rules = Object.fromEntries(priceRules);
   const updatedAt = Date.now();
   seenUpdatedAt.labels = updatedAt;
-  chrome.storage.local.set({ [LABELS_STORAGE_KEY]: { labels, items, updatedAt } });
+  chrome.storage.local.set({ [LABELS_STORAGE_KEY]: { labels, items, priceRules: rules, updatedAt } });
 }
 
 // Common tail for anything that changes labels: persist, then refresh the
@@ -668,12 +708,21 @@ function discardLabelEdit() {
   if (!labelEditBefore) return;
   labels = labelEditBefore.labels.map((l) => ({ ...l }));
   labelsOf = new Map(labelEditBefore.labelsOf.map(([key, ids]) => [key, new Set(ids)]));
+  restorePriceRules(labelEditBefore);
   labelEditBefore = null;
   commitLabelChange();
 }
 
-function createLabel(name, forKey) {
+function createLabel(name, forKey, target = false) {
   const before = snapshotState();
+  const id = addLabel(name, target);
+  if (forKey) setItemLabel(forKey, id, true);
+  recordChange(before);
+  commitLabelChange();
+}
+
+// Adds a label to the list (no undo step or save) and returns its id.
+function addLabel(name, target = false) {
   const id = `l${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   // Reuse the least-used color so neighbouring labels stay distinguishable.
   const used = labels.map((l) => l.color);
@@ -681,10 +730,8 @@ function createLabel(name, forKey) {
   for (let c = 0; c < LABEL_COLORS; c++) {
     if (used.filter((u) => u === c).length < used.filter((u) => u === color).length) color = c;
   }
-  labels.push({ id, name, color });
-  if (forKey) setItemLabel(forKey, id, true);
-  recordChange(before);
-  commitLabelChange();
+  labels.push(target ? { id, name, color, target: true } : { id, name, color });
+  return id;
 }
 
 function setItemLabel(key, id, on) {
@@ -742,6 +789,10 @@ function deleteLabel(id, targetId) {
     setItemLabel(key, id, false);
     if (getLabel(targetId)) setItemLabel(key, targetId, true);
   });
+  priceRules.forEach((rule, rid) => {
+    if (rule.labelId !== id) return;
+    if (getLabel(targetId)) rule.labelId = targetId; else priceRules.delete(rid);
+  });
   labels = labels.filter((l) => l.id !== id);
   recordChange(before);
   commitLabelChange();
@@ -751,11 +802,17 @@ function labelCount(id) {
   return order.filter((k) => itemLabelIds(k).has(id)).length;
 }
 
-function makeLabelChips(key) {
+// The item's label chips. In the saved list (withTargets), each price target
+// shows as a pill with its target price instead (makePriceTags), and the
+// labels those targets apply aren't repeated as chips.
+function makeLabelChips(key, withTargets = false) {
   const wrap = document.createElement('span');
   wrap.className = 'label-chips';
+  if (withTargets) wrap.append(...makePriceTags(key));
+  const targetLabels = new Set(itemTargetIds(key).map((rid) => priceRules.get(rid).labelId));
   labels.forEach((label) => {
     if (!itemLabelIds(key).has(label.id)) return;
+    if (withTargets && targetLabels.has(label.id)) return;
     const chip = document.createElement('span');
     chip.className = `label-chip label-c${label.color}`;
     chip.textContent = label.name;
@@ -763,6 +820,746 @@ function makeLabelChips(key) {
     wrap.appendChild(chip);
   });
   return wrap;
+}
+
+// ---- Price targets ----
+
+// A price target: while its item's price on the page is within [min, max]
+// (either end may be null, i.e. open), the item gets the target's label. An
+// item can have several targets (e.g. "Good price" at $40, "Buy now" at
+// $20); each is keyed by its own id and names its item in `key`. Prices are
+// only seen while the popup is open on the cart, so that's when targets are
+// checked (applyPriceRules, after every scan) — there's no background price
+// tracking. `applied` marks that the target has fired for the current
+// in-range stretch, so removing the label by hand sticks until the price
+// leaves the range and comes back. `added` marks that the target put the
+// label on (rather than the item already having it), so it only takes off a
+// label it added itself once the price leaves the range — and not while
+// another of the item's targets with the same label is still applying it.
+// Stored with the labels (`priceRules` in sfl_labels), so they sync and undo
+// along with them. Each target also keeps the item's title/url/image and
+// last price seen, so the "Price targets" tab can list items that are no
+// longer on the page.
+//
+// While an item on the page is in range of a target, a notification card
+// shows at the top of the popup (renderPriceAlerts), one per target.
+// "Dismiss" sets `dismissedPrice` to the current price, hiding it until the
+// price changes (applyPriceRules clears it on any change, so it comes back
+// even if the price returns to the same amount later); "Don't show again"
+// sets `muted`, which the edit dialog's "Notify me" checkbox turns back off.
+// Saving a target from the dialog clears `dismissedPrice`.
+//
+// The Price targets tab lists one row per target in the user's own order
+// (drag to rearrange), kept as a `rank` on each target rather than as a
+// separate list, so it syncs in the same chunks as the targets. Targets
+// without one sort last, in the order they were stored.
+
+const RULE_ITEM_FIELDS = ['title', 'url', 'image', 'price', 'priceText'];
+
+function newTargetId() {
+  return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// The item's target ids, in the Price targets tab's order.
+function itemTargetIds(key) {
+  return targetIds().filter((rid) => priceRules.get(rid).key === key);
+}
+
+// The short form of an Amazon product link ("https://www.amazon.com/dp/<ASIN>"
+// rather than the long one with the product name in it), to keep targets
+// small in sync; other links just lose their query string.
+function shortProductUrl(url) {
+  try {
+    const u = new URL(url);
+    const m = u.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/);
+    return m ? `${u.origin}/dp/${m[1]}` : url.split('?')[0];
+  } catch (e) {
+    return url;
+  }
+}
+
+// Copies the item's details onto its target; returns whether any changed.
+function rememberRuleItem(rule, item) {
+  let changed = false;
+  RULE_ITEM_FIELDS.forEach((f) => {
+    const value = f === 'url' && item.url ? shortProductUrl(item.url) : item[f];
+    if (value === undefined || value === null || rule[f] === value) return;
+    rule[f] = value;
+    changed = true;
+  });
+  return changed;
+}
+
+function priceInRange(price, rule) {
+  return (rule.min === null || price >= rule.min) && (rule.max === null || price <= rule.max);
+}
+
+// Formats an amount the way Amazon wrote `priceText` ("$18.99", "18,99 €"):
+// same currency symbol and decimal mark, two decimals, no thousands marks.
+function formatPriceLike(priceText, amount) {
+  const fixed = amount.toFixed(2);
+  const m = (priceText || '').match(/\d(?:[\d.,\s ]*\d)?/);
+  if (!m) return fixed;
+  const decimalComma = /,\d{2}$/.test(m[0]);
+  return priceText.replace(m[0], decimalComma ? fixed.replace('.', ',') : fixed);
+}
+
+// How far the price is from the target: { text, hit } or null if unknown.
+// Above the range it's the drop still needed; below a minimum, how far
+// under; in range with a maximum, how far under that maximum it is.
+function priceTargetGap(price, priceText, rule) {
+  if (typeof price !== 'number') return null;
+  const round = (n) => Math.round(n * 100) / 100;
+  if (rule.max !== null && price > rule.max) {
+    return { text: `${formatPriceLike(priceText, round(price - rule.max))} above target`, hit: false };
+  }
+  if (rule.min !== null && price < rule.min) {
+    return { text: `${formatPriceLike(priceText, round(rule.min - price))} below range`, hit: false };
+  }
+  if (rule.max !== null) {
+    const under = round(rule.max - price);
+    return { text: under ? `${formatPriceLike(priceText, under)} under target` : 'At target', hit: true };
+  }
+  return { text: 'In range', hit: true };
+}
+
+// priceText (optional) is a price Amazon showed for the item, to borrow its
+// currency format from; without one the bounds are plain numbers.
+function formatPriceRange(rule, priceText) {
+  const fmt = (n) => (priceText ? formatPriceLike(priceText, n) : `${n}`);
+  if (rule.min !== null && rule.max !== null) return rule.min === rule.max ? fmt(rule.min) : `${fmt(rule.min)}–${fmt(rule.max)}`;
+  return rule.min !== null ? `${fmt(rule.min)} or more` : `${fmt(rule.max)} or less`;
+}
+
+// Whether another of the item's targets (other than `exceptId`) is
+// currently applying `labelId` — if so, that label stays on.
+function labelHeldByOtherTarget(key, labelId, exceptId) {
+  return itemTargetIds(key).some((rid) => {
+    const r = priceRules.get(rid);
+    return rid !== exceptId && r.labelId === labelId && r.applied;
+  });
+}
+
+// Adds/removes target labels for the prices currently known. Returns whether
+// anything changed; callers save and re-render. Not an undo step, since it's
+// the page's prices changing, not the user. Holds off while the label editor
+// is open so its snapshot stays accurate.
+function applyPriceRules() {
+  if (labelEditBefore) return false;
+  let changed = false;
+  priceRules.forEach((rule, rid) => {
+    const key = rule.key;
+    const item = itemsByKey.get(key);
+    if (!item) return;
+    if (rememberRuleItem(rule, item)) changed = true;
+    if (rule.dismissedPrice != null && item.price !== rule.dismissedPrice) {
+      rule.dismissedPrice = null;
+      changed = true;
+    }
+    if (typeof item.price !== 'number' || !getLabel(rule.labelId)) return;
+    const inRange = priceInRange(item.price, rule);
+    if (inRange && !rule.applied) {
+      rule.added = !itemLabelIds(key).has(rule.labelId);
+      if (rule.added) setItemLabel(key, rule.labelId, true);
+      rule.applied = true;
+      changed = true;
+    } else if (!inRange && rule.applied) {
+      if (rule.added && !labelHeldByOtherTarget(key, rule.labelId, rid)) setItemLabel(key, rule.labelId, false);
+      rule.applied = false;
+      rule.added = false;
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+// Undoes whatever the target did to its item's labels, before it's replaced
+// or removed.
+function retractPriceRule(rid) {
+  const rule = priceRules.get(rid);
+  if (rule && rule.added && !labelHeldByOtherTarget(rule.key, rule.labelId, rid)) setItemLabel(rule.key, rule.labelId, false);
+}
+
+// Saves a target: the existing one `rid`, or a new one for item `key` when
+// rid is null.
+function setPriceRule(key, rid, { min, max, labelId, newLabelName, notify }) {
+  const before = snapshotState();
+  if (rid) retractPriceRule(rid);
+  const id = newLabelName ? addLabel(newLabelName, true) : labelId;
+  const old = (rid && priceRules.get(rid)) || {};
+  const rank = old.rank !== undefined ? old.rank : nextTargetRank();
+  const rule = { key, labelId: id, min, max, applied: false, added: false, muted: !notify, dismissedPrice: null, rank };
+  RULE_ITEM_FIELDS.forEach((f) => { if (old[f] !== undefined) rule[f] = old[f]; });
+  if (!rid) {
+    const item = itemsByKey.get(key);
+    if (item) rememberRuleItem(rule, item);
+  }
+  priceRules.set(rid || newTargetId(), rule);
+  applyPriceRules();
+  recordChange(before);
+  commitLabelChange();
+}
+
+function removePriceRule(rid) {
+  const before = snapshotState();
+  retractPriceRule(rid);
+  priceRules.delete(rid);
+  recordChange(before);
+  commitLabelChange();
+}
+
+// Targets whose item is on the page with its price in range right now, and
+// whose notification hasn't been dismissed or muted, in list order.
+function priceAlertIds() {
+  return order.flatMap((key) => itemTargetIds(key).filter((rid) => {
+    const rule = priceRules.get(rid);
+    const item = itemsByKey.get(key);
+    if (rule.muted || !item || typeof item.price !== 'number') return false;
+    return priceInRange(item.price, rule) && rule.dismissedPrice !== item.price;
+  }));
+}
+
+// permanently: "Don't show again" (until re-enabled in the edit dialog);
+// otherwise hidden until the price changes.
+function dismissPriceAlert(rid, permanently) {
+  const rule = priceRules.get(rid);
+  if (!rule) return;
+  const item = itemsByKey.get(rule.key);
+  const before = snapshotState();
+  if (permanently) rule.muted = true;
+  else if (item) rule.dismissedPrice = item.price;
+  recordChange(before);
+  commitLabelChange();
+}
+
+function renderPriceAlerts() {
+  const ids = priceAlertIds();
+  ['priceAlerts', 'priceAlertsModal'].forEach((containerId) => {
+    const container = $(containerId);
+    container.innerHTML = '';
+    container.hidden = !ids.length;
+    ids.forEach((rid) => {
+      const rule = priceRules.get(rid);
+      const item = itemsByKey.get(rule.key);
+      const label = getLabel(rule.labelId);
+      const gap = priceTargetGap(item.price, item.priceText, rule);
+
+      const card = document.createElement('div');
+      card.className = 'price-alert';
+      card.setAttribute('role', 'status');
+      const text = document.createElement('div');
+      text.className = 'price-alert-text';
+      const heading = document.createElement('strong');
+      heading.textContent = label ? `Price target hit: ${label.name}` : 'Price target hit';
+      const title = makeTitleEl(item, rule.key);
+      const detail = document.createElement('span');
+      detail.className = 'price-alert-detail';
+      detail.textContent = `Now ${item.priceText} · target ${formatPriceRange(rule, item.priceText)}${gap ? ` · ${gap.text}` : ''}`;
+      text.append(heading, title, detail);
+
+      const actions = document.createElement('div');
+      actions.className = 'price-alert-actions';
+      [
+        { text: 'Edit', title: 'Edit this price target', onClick: () => openPriceRuleDialog(rule.key, rid) },
+        { text: 'Dismiss', title: 'Hide until the price changes', onClick: () => dismissPriceAlert(rid, false) },
+        { text: "Don't show again", title: 'Stop notifying for this target (turn back on with Edit)', onClick: () => dismissPriceAlert(rid, true) }
+      ].forEach((a) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.text;
+        btn.title = a.title;
+        btn.addEventListener('click', a.onClick);
+        actions.appendChild(btn);
+      });
+      card.append(text, actions);
+      container.appendChild(card);
+    });
+  });
+}
+
+// The item details a target row shows: live from the page when it's there,
+// otherwise what the target remembers.
+function targetItem(rid) {
+  const rule = priceRules.get(rid);
+  return (order.includes(rule.key) && itemsByKey.get(rule.key)) || rule;
+}
+
+function targetIsHit(rid) {
+  const item = targetItem(rid);
+  return typeof item.price === 'number' && priceInRange(item.price, priceRules.get(rid));
+}
+
+const TARGET_FILTERS = {
+  hit: { text: 'In range', test: (rid) => targetIsHit(rid) },
+  miss: { text: 'Not in range', test: (rid) => !targetIsHit(rid) },
+  offpage: { text: 'Not on this page', test: (rid) => !order.includes(priceRules.get(rid).key) },
+  muted: { text: 'Notifications off', test: (rid) => !!priceRules.get(rid).muted }
+};
+
+function matchesTargetFilter(rid, filter = targetFilter) {
+  if (filter === 'all') return true;
+  if (filter.startsWith('label:')) return priceRules.get(rid).labelId === filter.slice(6);
+  if (filter.startsWith('item:')) return itemLabelIds(priceRules.get(rid).key).has(filter.slice(5));
+  return TARGET_FILTERS[filter] ? TARGET_FILTERS[filter].test(rid) : true;
+}
+
+// One-line summary in #msg's slot on the Price targets tab, like the saved
+// tab's item count.
+function renderTargetSummary() {
+  const ids = [...priceRules.keys()];
+  const hits = ids.filter(targetIsHit).length;
+  const offPage = ids.filter((rid) => !order.includes(priceRules.get(rid).key)).length;
+  const parts = [`${ids.length} price target${ids.length === 1 ? '' : 's'}`, `${hits} in range`];
+  if (offPage) parts.push(`${offPage} not on this page`);
+  $('targetsHint').textContent = parts.join(' · ');
+}
+
+// Fills both targets filter dropdowns (compact + grid) with counts, in the
+// shared layout (see appendLabelGroups): status filters, general labels
+// (matching targets whose item has them), price-target labels.
+function renderTargetFilter() {
+  const ids = [...priceRules.keys()];
+  const count = (filter) => ids.filter((rid) => matchesTargetFilter(rid, filter)).length;
+  const targetIds = priceTargetLabelIds();
+  const usedLabels = labels.filter((l) => targetIds.has(l.id));
+  const generalLabels = labels.filter((l) => !targetIds.has(l.id));
+  const valid = ['all', ...Object.keys(TARGET_FILTERS), ...usedLabels.map((l) => `label:${l.id}`), ...generalLabels.map((l) => `item:${l.id}`)];
+  if (!valid.includes(targetFilter)) targetFilter = 'all';
+  document.querySelectorAll('.targetsFilter').forEach((select) => {
+    select.innerHTML = '';
+    const add = (parent, value, text) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = `${text} (${count(value)})`;
+      parent.appendChild(opt);
+    };
+    add(select, 'all', 'All targets');
+    const withCount = (value, text) => [value, `${text} (${count(value)})`];
+    appendLabelGroups(select, [
+      { title: 'Status', options: Object.entries(TARGET_FILTERS).map(([value, f]) => withCount(value, f.text)) },
+      { title: 'Labels', options: generalLabels.map((l) => withCount(`item:${l.id}`, l.name)) },
+      { title: 'Price target labels', options: usedLabels.map((l) => withCount(`label:${l.id}`, l.name)) }
+    ]);
+    appendFilterActions(select);
+    select.value = targetFilter;
+  });
+}
+
+// Target ids in the order the Price targets tab shows them.
+function targetIds() {
+  const rank = (rid) => { const r = priceRules.get(rid).rank; return typeof r === 'number' ? r : Infinity; };
+  return [...priceRules.keys()].sort((a, b) => rank(a) - rank(b));
+}
+
+function nextTargetRank() {
+  return targetIds().reduce((max, rid) => Math.max(max, priceRules.get(rid).rank ?? -1), -1) + 1;
+}
+
+// Moves a target before/after another in the Price targets tab, then
+// renumbers every rank so they stay 0..n-1.
+function moveTarget(rid, targetRid, position) {
+  if (rid === targetRid) return;
+  const ids = targetIds().filter((r) => r !== rid);
+  const idx = ids.indexOf(targetRid);
+  if (idx === -1) return;
+  ids.splice(position === 'after' ? idx + 1 : idx, 0, rid);
+  const before = snapshotState();
+  ids.forEach((r, i) => { priceRules.get(r).rank = i; });
+  recordChange(before);
+  commitLabelChange();
+}
+
+function attachTargetRowDrag(li, listEl) {
+  const clear = () => listEl.querySelectorAll('li').forEach((r) => r.classList.remove('drag-over-before', 'drag-over-after'));
+  li.addEventListener('dragstart', (e) => {
+    listEl.dataset.dragging = li.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    li.classList.add('drag-source');
+  });
+  li.addEventListener('dragend', () => {
+    li.classList.remove('drag-source');
+    delete listEl.dataset.dragging;
+    clear();
+  });
+  li.addEventListener('dragover', (e) => {
+    if (!listEl.dataset.dragging) return;
+    e.preventDefault();
+    // In the grid view it's the panel around the list that scrolls.
+    autoScrollContainerOnDragover(listEl.id === 'targetsListModal' ? listEl.parentElement : listEl, e.clientY);
+    // The grid view's cards flow left to right like the saved tiles (except
+    // in table view), so split them on the horizontal midpoint there.
+    const rect = li.getBoundingClientRect();
+    const horizontal = listEl.id === 'targetsListModal' && !listEl.classList.contains('table-view');
+    const before = horizontal ? e.clientX - rect.left < rect.width / 2 : e.clientY - rect.top < rect.height / 2;
+    clear();
+    li.classList.add(before ? 'drag-over-before' : 'drag-over-after');
+    li.dataset.dropPosition = before ? 'before' : 'after';
+  });
+  li.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const rid = listEl.dataset.dragging;
+    clear();
+    if (rid) moveTarget(rid, li.dataset.id, li.dataset.dropPosition || 'before');
+  });
+}
+
+// Compact form of a target range for the saved list's pills: "$20.00" (a
+// highest price — the usual target), "≥ $5.00", "$5.00–$10.00".
+function formatPriceRangeShort(rule, priceText) {
+  const fmt = (n) => (priceText ? formatPriceLike(priceText, n) : `${n}`);
+  if (rule.min !== null && rule.max !== null) return rule.min === rule.max ? fmt(rule.min) : `${fmt(rule.min)}–${fmt(rule.max)}`;
+  return rule.min !== null ? `≥ ${fmt(rule.min)}` : fmt(rule.max);
+}
+
+// One pill per price target of the item, showing its target price;
+// highlighted while the current price is in range. Hovering names the
+// target's label and shows the current price.
+function makePriceTags(key) {
+  const item = itemsByKey.get(key);
+  const known = item && typeof item.price === 'number';
+  return itemTargetIds(key).flatMap((rid) => {
+    const rule = priceRules.get(rid);
+    const label = getLabel(rule.labelId);
+    if (!label) return [];
+    const priceText = (item && item.priceText) || rule.priceText;
+    const tag = document.createElement('span');
+    tag.className = 'price-tag';
+    tag.textContent = formatPriceRangeShort(rule, priceText);
+    if (known && priceInRange(item.price, rule)) tag.classList.add('hit');
+    tag.title = `“${label.name}” when the price is ${formatPriceRange(rule, priceText)}` +
+      ` · now ${known ? item.priceText : 'no price shown'}`;
+    return [tag];
+  });
+}
+
+const NEW_LABEL_OPTION = '__new';
+
+// camelcamelcamel's price-history site for each Amazon storefront it covers.
+const CAMEL_HOSTS = {
+  'amazon.com': 'camelcamelcamel.com',
+  'amazon.co.uk': 'uk.camelcamelcamel.com',
+  'amazon.de': 'de.camelcamelcamel.com',
+  'amazon.fr': 'fr.camelcamelcamel.com',
+  'amazon.ca': 'ca.camelcamelcamel.com',
+  'amazon.com.au': 'au.camelcamelcamel.com',
+  'amazon.es': 'es.camelcamelcamel.com',
+  'amazon.it': 'it.camelcamelcamel.com',
+  'amazon.co.jp': 'jp.camelcamelcamel.com'
+};
+
+// The item's camelcamelcamel page, or null if its key isn't an ASIN or its
+// storefront isn't one camelcamelcamel tracks. Items with no known URL are
+// assumed to be on amazon.com.
+function camelUrl(key, productUrl) {
+  if (!/^[A-Z0-9]{10}$/.test(key)) return null;
+  let host = 'amazon.com';
+  try {
+    if (productUrl) host = new URL(productUrl).hostname.replace(/^(www|smile)\./, '');
+  } catch (e) { /* keep the default */ }
+  const camel = CAMEL_HOSTS[host];
+  return camel ? `https://${camel}/product/${key}` : null;
+}
+
+const OPEN_IN_NEW_ICON_PATH = 'M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z'; // "open-in-new" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0)
+
+// "Open product page" for the right-click menus, or null without a URL.
+// Background tab, like item titles, so the popup stays open.
+function openProductEntry(url) {
+  if (!url) return null;
+  return { label: 'Open product page', icon: OPEN_IN_NEW_ICON_PATH, onClick: () => chrome.tabs.create({ url, active: false }) };
+}
+
+// "Price history on camelcamelcamel" for the right-click menus, or null
+// when camelcamelcamel doesn't cover the item (see camelUrl).
+function camelEntry(key, productUrl) {
+  const url = camelUrl(key, productUrl);
+  if (!url) return null;
+  return { label: 'Price history on camelcamelcamel', icon: OPEN_IN_NEW_ICON_PATH, onClick: () => chrome.tabs.create({ url, active: false }) };
+}
+
+// Right-click menu for a row on the Price targets tab.
+function openTargetMenu(rid, x, y) {
+  if (applyInProgress) return;
+  const rule = priceRules.get(rid);
+  const item = targetItem(rid);
+  const entries = [{ heading: 'Price target', closable: true }];
+  entries.push({ label: 'Edit price target…', onClick: () => openPriceRuleDialog(rule.key, rid) });
+  entries.push({ label: 'Add another price target…', onClick: () => openPriceRuleDialog(rule.key) });
+  const product = openProductEntry(item.url);
+  if (product) entries.push(product);
+  const history = camelEntry(rule.key, item.url);
+  if (history) entries.push(history);
+  entries.push('sep');
+  entries.push({ label: 'Delete price target', danger: true, onClick: () => removePriceRule(rid) });
+  openContextMenu(entries, x, y);
+}
+
+// Edits target `rid`, or adds a new target for item `key` when rid is omitted.
+function openPriceRuleDialog(key, rid = null) {
+  const rule = rid ? priceRules.get(rid) : null;
+  // Falls back to the details a target remembers for items no longer on the page.
+  const onPage = order.includes(key);
+  const remembered = rule || itemTargetIds(key).map((r) => priceRules.get(r))[0];
+  const item = (onPage && itemsByKey.get(key)) || remembered || itemsByKey.get(key);
+  const known = item && typeof item.price === 'number';
+
+  const intro = document.createElement('p');
+  intro.textContent = `Label “${(item && item.title) || key}” automatically while its price is in this range. ` +
+    (onPage ? `Current price: ${known ? item.priceText : 'not shown on the page'}.`
+      : `Last price seen: ${known ? item.priceText : 'none'} (not on this page right now).`);
+
+  const range = document.createElement('div');
+  range.className = 'price-rule-range';
+  const makeBound = (placeholder, value) => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = placeholder;
+    if (value !== null && value !== undefined) input.value = String(value);
+    return input;
+  };
+  const minInput = makeBound('Any', rule ? rule.min : null);
+  const maxInput = makeBound(known ? String(item.price) : 'Any', rule ? rule.max : null);
+  range.append('From', minInput, 'to', maxInput);
+
+  const selectLabel = document.createElement('label');
+  selectLabel.className = 'price-rule-label';
+  selectLabel.textContent = 'Add label';
+  const select = document.createElement('select');
+  // Labels already used by price targets first, then a separator, then the rest.
+  const targetLabelIds = priceTargetLabelIds();
+  const targetLabels = labels.filter((l) => targetLabelIds.has(l.id));
+  const otherLabels = labels.filter((l) => !targetLabelIds.has(l.id));
+  const addSeparator = () => {
+    const sep = document.createElement('option');
+    sep.disabled = true;
+    sep.textContent = '──────────';
+    select.appendChild(sep);
+  };
+  [targetLabels, otherLabels].forEach((group, i) => {
+    if (i && targetLabels.length && otherLabels.length) addSeparator();
+    group.forEach((l) => {
+      const opt = document.createElement('option');
+      opt.value = l.id;
+      opt.textContent = l.name;
+      select.appendChild(opt);
+    });
+  });
+  const newOpt = document.createElement('option');
+  newOpt.value = NEW_LABEL_OPTION;
+  newOpt.textContent = '＋ New label…';
+  select.appendChild(newOpt);
+  // For a new target, default to a price-target label the item doesn't
+  // already have a target for.
+  const taken = new Set(itemTargetIds(key).map((r) => priceRules.get(r).labelId));
+  const firstLabel = targetLabels.find((l) => !taken.has(l.id)) || targetLabels[0] || otherLabels[0];
+  select.value = rule ? rule.labelId : (firstLabel ? firstLabel.id : NEW_LABEL_OPTION);
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'price-rule-new';
+  nameInput.maxLength = LABEL_NAME_MAX;
+  nameInput.placeholder = 'e.g. Good price, Buy now';
+  const syncNameInput = () => { nameInput.style.display = select.value === NEW_LABEL_OPTION ? '' : 'none'; };
+  select.addEventListener('change', () => { syncNameInput(); if (select.value === NEW_LABEL_OPTION) nameInput.focus(); });
+  syncNameInput();
+
+  const error = document.createElement('p');
+  error.className = 'price-rule-error';
+  error.style.display = 'none';
+
+  const notifyRow = document.createElement('label');
+  notifyRow.className = 'price-rule-notify';
+  const notifyBox = document.createElement('input');
+  notifyBox.type = 'checkbox';
+  notifyBox.checked = !(rule && rule.muted);
+  notifyRow.append(notifyBox, 'Notify me in this popup when the price is in range');
+
+  const note = document.createElement('p');
+  note.className = 'price-rule-note';
+  note.textContent = 'Prices are only checked for items in your Saved for later list, while this popup is ' +
+    'open on your cart. The label comes off again when the price leaves the range, unless the item already had it.';
+
+  const showError = (text, field) => {
+    error.textContent = text;
+    error.style.display = '';
+    if (field) field.focus();
+    return false;
+  };
+  const submit = () => {
+    const parse = (input) => (input.value.trim() === '' ? null : Number(input.value));
+    const min = parse(minInput);
+    const max = parse(maxInput);
+    if (min === null && max === null) return showError('Enter a lowest price, a highest price, or both.', maxInput);
+    if ([min, max].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) return showError('Prices must be 0 or more.', minInput);
+    if (min !== null && max !== null && min > max) return showError('The lowest price is above the highest.', minInput);
+    const newLabelName = select.value === NEW_LABEL_OPTION ? nameInput.value.trim() : null;
+    if (select.value === NEW_LABEL_OPTION && !newLabelName) return showError('Name the new label.', nameInput);
+    setPriceRule(key, rid, { min, max, labelId: select.value, newLabelName, notify: notifyBox.checked });
+    return true;
+  };
+  [minInput, maxInput, nameInput].forEach((input) => input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && submit()) closeDialog();
+  }));
+
+  const actions = [{ label: 'Cancel' }];
+  if (rule) actions.unshift({ label: 'Remove', danger: true, onClick: () => { removePriceRule(rid); } });
+  actions.push({ label: 'Save', primary: true, onClick: submit });
+  openDialog(rule ? 'Edit price target' : 'New price target', [intro, range, selectLabel, select, nameInput, notifyRow, error, note], actions);
+  (rule ? minInput : maxInput).focus();
+}
+
+// The "Price targets" tab: one row per target, its item on the page or not.
+// The tab bar only shows while there's at least one; removing the last one
+// drops back to the saved list.
+function renderPriceTargets() {
+  const hasTargets = priceRules.size > 0;
+  ['tabBar', 'tabBarModal'].forEach((id) => { $(id).hidden = !hasTargets; });
+  if (!hasTargets) activeTab = 'saved';
+  document.body.classList.toggle('tab-targets', activeTab === 'targets');
+  document.querySelectorAll('.savedTabBtn, .targetsTabBtn').forEach((btn) => {
+    const selected = btn.classList.contains('targetsTabBtn') === (activeTab === 'targets');
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-selected', String(selected));
+  });
+  document.querySelectorAll('.targetsTabBtn').forEach((btn) => { btn.textContent = `Price targets (${priceRules.size})`; });
+
+  // Same rows in the compact popup and the grid view.
+  renderTargetSummary();
+  renderTargetFilter();
+  ['targetsList', 'targetsListModal'].forEach((id) => renderPriceTargetRows($(id)));
+  renderPriceAlerts();
+  matchTargetsFooterHeight();
+}
+
+// Gives the grid view's targets footer the saved tab's footer height (its
+// Apply/Reset buttons make that one taller), so switching tabs doesn't
+// change it. That footer is hidden on the targets tab, so it's measured
+// with the tab class briefly off.
+function matchTargetsFooterHeight() {
+  if (!gridMode) return;
+  const body = document.body;
+  const onTargets = body.classList.contains('tab-targets');
+  if (onTargets) body.classList.remove('tab-targets');
+  const height = $('gridModalFooter').getBoundingClientRect().height;
+  if (onTargets) body.classList.add('tab-targets');
+  if (height) $('targetsFooterModal').style.minHeight = `${height}px`;
+}
+
+function renderPriceTargetRows(listEl) {
+  listEl.innerHTML = '';
+  // Filtering only hides rows: dragging still moves a target within the
+  // full order, next to the visible row it was dropped on.
+  const ids = targetIds().filter((rid) => matchesTargetFilter(rid));
+  if (!ids.length && priceRules.size) {
+    const li = document.createElement('li');
+    li.className = 'filter-empty';
+    li.textContent = 'No price targets match this filter.';
+    listEl.appendChild(li);
+  }
+  ids.forEach((rid) => {
+    const rule = priceRules.get(rid);
+    const key = rule.key;
+    const label = getLabel(rule.labelId);
+    const onPage = order.includes(key);
+    const item = targetItem(rid);
+    const li = document.createElement('li');
+    if (!onPage) li.classList.add('off-page');
+    li.dataset.id = rid;
+    li.dataset.key = key;
+    li.draggable = true;
+    attachTargetRowDrag(li, listEl);
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openTargetMenu(rid, e.clientX, e.clientY);
+    });
+
+    const handle = document.createElement('span');
+    handle.className = 'handle';
+    handle.textContent = '⠿';
+    handle.title = 'Drag to rearrange';
+
+    const imgWrap = document.createElement('div');
+    imgWrap.className = 'imgwrap';
+    const img = document.createElement('img');
+    img.alt = '';
+    if (item.image) img.src = item.image; else img.style.visibility = 'hidden';
+    img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+    imgWrap.appendChild(img);
+
+    const main = document.createElement('div');
+    main.className = 'target-main';
+    const meta = document.createElement('div');
+    meta.className = 'target-meta';
+    // The target's own label, then the item's general labels.
+    const targetLabelIds = priceTargetLabelIds();
+    const general = labels.filter((l) => itemLabelIds(key).has(l.id) && !targetLabelIds.has(l.id));
+    [label, ...general].forEach((l) => {
+      if (!l) return;
+      const chip = document.createElement('span');
+      chip.className = `label-chip label-c${l.color}`;
+      chip.textContent = l.name;
+      chip.title = l.name;
+      meta.appendChild(chip);
+    });
+    const range = document.createElement('span');
+    range.textContent = `at ${formatPriceRange(rule, item.priceText)}`;
+    meta.appendChild(range);
+    const price = document.createElement('span');
+    price.className = 'price-tag';
+    const known = typeof item.price === 'number';
+    if (known && priceInRange(item.price, rule)) price.classList.add('hit');
+    price.textContent = known ? (onPage ? item.priceText : `last seen ${item.priceText}`) : 'No price';
+    meta.appendChild(price);
+    const gap = priceTargetGap(item.price, item.priceText, rule);
+    if (gap) {
+      const gapEl = document.createElement('span');
+      gapEl.className = gap.hit ? 'target-gap hit' : 'target-gap';
+      gapEl.textContent = gap.text;
+      meta.appendChild(gapEl);
+    }
+    if (!onPage) {
+      const off = document.createElement('span');
+      off.textContent = "Not on this page — price isn't being checked";
+      meta.appendChild(off);
+    }
+    if (rule.muted) {
+      const muted = document.createElement('span');
+      muted.textContent = 'Notifications off';
+      muted.title = 'Turn back on with Edit';
+      meta.appendChild(muted);
+    }
+    main.append(makeTitleEl({ title: item.title || key, url: item.url }, key), meta);
+
+    // Editing and deleting are in the row's right-click menu (openTargetMenu).
+    li.append(handle, imgWrap, main);
+    listEl.appendChild(li);
+  });
+}
+
+// Switching tabs keeps the popup the size it was: the compact targets list
+// is sized to take exactly the room the saved list's controls had, and
+// scrolls within it. (The compact view sits behind the grid view too, so
+// this applies there as well — its height is what sizes the popup window.)
+function setActiveTab(tab) {
+  if (tab === activeTab) return;
+  // Content height, not the visible height: at Chrome's 600px popup cap the
+  // two are different, and the visible height would be the same either way.
+  const height = document.body.scrollHeight;
+  // The targets summary takes #msg's slot; matching its height keeps the
+  // filter row exactly where the label filter was.
+  if (tab === 'targets') $('targetsHint').style.minHeight = `${$('msg').getBoundingClientRect().height}px`;
+  activeTab = tab;
+  // Remembered by the page (until it reloads), so the popup reopens here.
+  if (activeTabId) sendToTab(activeTabId, { type: 'SFL_SET_LAST_TAB', tab }).catch(() => {});
+  closeContextMenu();
+  renderPriceTargets();
+  if (tab !== 'targets') return;
+  const list = $('targetsList');
+  list.style.height = '';
+  list.style.maxHeight = 'none';
+  list.style.height = `${Math.max(60, list.offsetHeight + height - document.body.scrollHeight)}px`;
 }
 
 function appendFilterEmptyNote(container) {
@@ -777,6 +1574,61 @@ function appendFilterEmptyNote(container) {
 // It's an action, not a filter: picking it opens the label editor and the
 // dropdown snaps back to the current filter.
 const EDIT_LABELS_OPTION = '__edit';
+const NEW_LABEL_FILTER_OPTION = '__newlabel';
+
+// Both tabs' filter dropdowns share one layout: the "all" entry and the
+// tab's own fixed filters, then optgroups for general labels and for
+// price-target labels, then a divider and the actions — "＋ New label…"
+// (a general label on the saved tab, a price-target label on the targets
+// tab) and "✎ Edit labels…". Actions aren't filters: picking one runs it
+// and the dropdown snaps back (onFilterAction).
+function appendLabelGroups(select, groups) {
+  groups.forEach(({ title, options }) => {
+    if (!options.length) return;
+    const group = document.createElement('optgroup');
+    group.label = title;
+    options.forEach(([value, text]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      group.appendChild(opt);
+    });
+    select.appendChild(group);
+  });
+}
+
+function appendFilterActions(select) {
+  const sep = document.createElement('option');
+  sep.disabled = true;
+  sep.textContent = '──────────';
+  select.appendChild(sep);
+  [[NEW_LABEL_FILTER_OPTION, '＋ New label…'], [EDIT_LABELS_OPTION, '✎ Edit labels…']].forEach(([value, text]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = text;
+    select.appendChild(opt);
+  });
+}
+
+// Runs a filter dropdown's action entry, if that's what was picked, and
+// puts the dropdown back on `current`. Returns whether it was an action.
+function onFilterAction(select, current, forTargets) {
+  if (select.value === EDIT_LABELS_OPTION) {
+    select.value = current;
+    openLabelEditor();
+    return true;
+  }
+  if (select.value === NEW_LABEL_FILTER_OPTION) {
+    select.value = current;
+    if (forTargets) {
+      promptLabelName('New price target label', '', (name) => createLabel(name, null, true), 'e.g. Good price, Buy now');
+    } else {
+      promptLabelName('New label', '', (name) => createLabel(name));
+    }
+    return true;
+  }
+  return false;
+}
 
 // Fills both filter dropdowns (compact + grid) and updates the interposing
 // items toggle.
@@ -791,15 +1643,14 @@ function renderLabelFilter() {
       select.appendChild(opt);
     };
     add('all', `All items (${order.length})`);
-    labels.forEach((l) => add(l.id, `${l.name} (${labelCount(l.id)})`));
-    if (labels.length) {
-      add('none', `No label (${order.filter((k) => itemLabelIds(k).size === 0).length})`);
-      const sep = document.createElement('option');
-      sep.disabled = true;
-      sep.textContent = '──────────';
-      select.appendChild(sep);
-      add(EDIT_LABELS_OPTION, '✎ Edit labels…');
-    }
+    if (labels.length) add('none', `No label (${order.filter((k) => itemLabelIds(k).size === 0).length})`);
+    const targetIds = priceTargetLabelIds();
+    const option = (l) => [l.id, `${l.name} (${labelCount(l.id)})`];
+    appendLabelGroups(select, [
+      { title: 'Labels', options: labels.filter((l) => !targetIds.has(l.id)).map(option) },
+      { title: 'Price target labels', options: labels.filter((l) => targetIds.has(l.id)).map(option) }
+    ]);
+    appendFilterActions(select);
     select.value = labelFilter;
   });
   ['inBetweenBtn', 'inBetweenBtnModal'].forEach((id) => {
@@ -827,7 +1678,8 @@ function closeContextMenu() {
   $('ctxMenu').classList.remove('show');
 }
 
-// entries: [{ label, onClick, danger }] | { heading } | 'sep'
+// entries: [{ label, onClick, danger, icon }] | { heading } | 'sep'
+// (icon: an SVG path drawn after the label, e.g. OPEN_IN_NEW_ICON_PATH)
 function openContextMenu(entries, x, y) {
   const menu = $('ctxMenu');
   menu.innerHTML = '';
@@ -855,6 +1707,9 @@ function openContextMenu(entries, x, y) {
       btn.type = 'button';
       btn.textContent = entry.label;
       btn.title = entry.label;
+      if (entry.icon) {
+        btn.insertAdjacentHTML('beforeend', `<svg class="ctx-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${entry.icon}"/></svg>`);
+      }
       if (entry.danger) btn.classList.add('danger');
       // keepOpen entries (label toggles) leave the menu up so several can
       // be ticked in a row; their onClick re-opens it to refresh the ✓s.
@@ -877,7 +1732,10 @@ function openItemMenu(key, x, y) {
   if (applyInProgress || deletingKey) return;
   const current = itemLabelIds(key);
   const entries = [{ heading: 'Labels', closable: true }];
-  labels.forEach((l) => {
+  // Labels a price target uses are applied by the target, not by hand.
+  const targetLabelIds = priceTargetLabelIds();
+  const menuLabels = labels.filter((l) => !targetLabelIds.has(l.id));
+  menuLabels.forEach((l) => {
     entries.push({
       label: `${current.has(l.id) ? '✓' : ' '} ${l.name}`,
       keepOpen: true,
@@ -887,8 +1745,21 @@ function openItemMenu(key, x, y) {
       }
     });
   });
-  if (labels.length) entries.push('sep');
+  if (menuLabels.length) entries.push('sep');
   entries.push({ label: '＋ New label…', onClick: () => promptLabelName('New label', '', (name) => createLabel(name, key)) });
+  entries.push('sep');
+  // One entry per existing target ("Edit “Buy now” target…"), then add another.
+  itemTargetIds(key).forEach((rid) => {
+    const rule = priceRules.get(rid);
+    const label = getLabel(rule.labelId);
+    entries.push({ label: `Edit “${label ? label.name : 'price'}” target…`, onClick: () => openPriceRuleDialog(key, rid) });
+  });
+  entries.push({ label: itemTargetIds(key).length ? 'Add another price target…' : 'Label at a target price…', onClick: () => openPriceRuleDialog(key) });
+  const item = itemsByKey.get(key);
+  const product = openProductEntry(item && item.url);
+  if (product) entries.push(product);
+  const history = camelEntry(key, item && item.url);
+  if (history) entries.push(history);
   entries.push('sep');
   entries.push({ label: 'Delete from Saved for later…', danger: true, onClick: () => confirmDeleteItem(key) });
   openContextMenu(entries, x, y);
@@ -925,11 +1796,7 @@ async function deleteSavedItem(key) {
 }
 
 function onLabelFilterChange(select) {
-  if (select.value === EDIT_LABELS_OPTION) {
-    select.value = labelFilter;
-    openLabelEditor();
-    return;
-  }
+  if (onFilterAction(select, labelFilter, false)) return;
   setLabelFilter(select.value);
 }
 
@@ -985,11 +1852,11 @@ function openDialog(title, bodyNodes, actions, { closable = false, onDismiss = n
   $('dialog').classList.add('show');
 }
 
-function promptLabelName(title, initial, onSave) {
+function promptLabelName(title, initial, onSave, placeholder = 'e.g. Grocery, Recurring, Electronics') {
   const input = document.createElement('input');
   input.type = 'text';
   input.maxLength = LABEL_NAME_MAX;
-  input.placeholder = 'e.g. Grocery, Recurring, Electronics';
+  input.placeholder = placeholder;
   input.value = initial;
   const submit = () => {
     const name = input.value.trim();
@@ -1027,58 +1894,25 @@ function openLabelEditor() {
     empty.textContent = 'No labels yet. Right-click an item or use “＋ Label” to create one.';
     list.appendChild(empty);
   }
-  labels.forEach((label) => {
-    const row = document.createElement('div');
-    row.className = 'label-editor-row';
-    row.dataset.id = label.id;
-    attachLabelRowDrag(row, list);
-
-    const handle = document.createElement('span');
-    handle.className = 'label-editor-handle';
-    handle.textContent = '⠿';
-    handle.title = 'Drag to reorder';
-    // Rows are only draggable while grabbed by the handle, so dragging in
-    // the name field still selects text as usual.
-    handle.addEventListener('mousedown', () => { row.draggable = true; });
-    row.addEventListener('mouseup', () => { row.draggable = false; });
-
-    const swatch = document.createElement('button');
-    swatch.type = 'button';
-    swatch.className = `label-swatch label-c${label.color}`;
-    swatch.title = 'Change color';
-    swatch.setAttribute('aria-label', `Change color of “${label.name}”`);
-    swatch.setAttribute('aria-expanded', 'false');
-    swatch.addEventListener('click', () => toggleLabelPalette(row, label, swatch));
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.maxLength = LABEL_NAME_MAX;
-    input.value = label.name;
-    input.setAttribute('aria-label', `Name of label “${label.name}”`);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-    });
-    input.addEventListener('change', () => {
-      const name = input.value.trim();
-      if (!name || name === label.name) { input.value = label.name; return; }
-      renameLabel(label.id, name);
-    });
-
-    const count = document.createElement('span');
-    count.className = 'label-editor-count';
-    const n = labelCount(label.id);
-    count.textContent = `${n} item${n === 1 ? '' : 's'}`;
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'label-editor-delete';
-    del.title = `Delete “${label.name}”`;
-    del.setAttribute('aria-label', `Delete “${label.name}”`);
-    del.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${TRASH_ICON_PATH}"/></svg>`;
-    del.addEventListener('click', () => confirmDeleteLabel(label.id, openLabelEditor));
-
-    row.append(handle, swatch, input, count, del);
-    list.appendChild(row);
+  // General labels and price-target labels, each under its own heading once
+  // there are price-target labels — price-target labels first when opened
+  // from the Price targets tab. Rows only reorder within a section.
+  const targetIds = priceTargetLabelIds();
+  const sections = [
+    { name: 'general', title: 'Labels', items: labels.filter((l) => !targetIds.has(l.id)) },
+    { name: 'targets', title: 'Price target labels', items: labels.filter((l) => targetIds.has(l.id)) }
+  ];
+  const showHeadings = sections[1].items.length > 0;
+  if (activeTab === 'targets') sections.reverse();
+  sections.forEach((section) => {
+    if (!section.items.length) return;
+    if (showHeadings) {
+      const heading = document.createElement('h5');
+      heading.className = 'label-editor-section';
+      heading.textContent = section.title;
+      list.appendChild(heading);
+    }
+    section.items.forEach((label) => appendLabelEditorRow(list, label, section.name));
   });
   openDialog('Edit labels', [list], [{
     label: 'Done',
@@ -1089,6 +1923,61 @@ function openLabelEditor() {
       finishLabelEdit();
     }
   }], { closable: true, onDismiss: discardLabelEdit });
+}
+
+function appendLabelEditorRow(list, label, section) {
+  const row = document.createElement('div');
+  row.className = 'label-editor-row';
+  row.dataset.id = label.id;
+  row.dataset.section = section;
+  attachLabelRowDrag(row, list);
+
+  const handle = document.createElement('span');
+  handle.className = 'label-editor-handle';
+  handle.textContent = '⠿';
+  handle.title = 'Drag to reorder';
+  // Rows are only draggable while grabbed by the handle, so dragging in
+  // the name field still selects text as usual.
+  handle.addEventListener('mousedown', () => { row.draggable = true; });
+  row.addEventListener('mouseup', () => { row.draggable = false; });
+
+  const swatch = document.createElement('button');
+  swatch.type = 'button';
+  swatch.className = `label-swatch label-c${label.color}`;
+  swatch.title = 'Change color';
+  swatch.setAttribute('aria-label', `Change color of “${label.name}”`);
+  swatch.setAttribute('aria-expanded', 'false');
+  swatch.addEventListener('click', () => toggleLabelPalette(row, label, swatch));
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = LABEL_NAME_MAX;
+  input.value = label.name;
+  input.setAttribute('aria-label', `Name of label “${label.name}”`);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+  });
+  input.addEventListener('change', () => {
+    const name = input.value.trim();
+    if (!name || name === label.name) { input.value = label.name; return; }
+    renameLabel(label.id, name);
+  });
+
+  const count = document.createElement('span');
+  count.className = 'label-editor-count';
+  const n = labelCount(label.id);
+  count.textContent = `${n} item${n === 1 ? '' : 's'}`;
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'label-editor-delete';
+  del.title = `Delete “${label.name}”`;
+  del.setAttribute('aria-label', `Delete “${label.name}”`);
+  del.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${TRASH_ICON_PATH}"/></svg>`;
+  del.addEventListener('click', () => confirmDeleteLabel(label.id, openLabelEditor));
+
+  row.append(handle, swatch, input, count, del);
+  list.appendChild(row);
 }
 
 // Opens (or closes) the color palette right below a label editor row. Only
@@ -1134,6 +2023,7 @@ function attachLabelRowDrag(row, list) {
   });
   row.addEventListener('dragstart', (e) => {
     list.dataset.dragging = row.dataset.id;
+    list.dataset.dragSection = row.dataset.section;
     e.dataTransfer.effectAllowed = 'move';
     row.classList.add('drag-source');
   });
@@ -1141,10 +2031,11 @@ function attachLabelRowDrag(row, list) {
     row.draggable = false;
     row.classList.remove('drag-source');
     delete list.dataset.dragging;
+    delete list.dataset.dragSection;
     clear();
   });
   row.addEventListener('dragover', (e) => {
-    if (!list.dataset.dragging) return;
+    if (!list.dataset.dragging || list.dataset.dragSection !== row.dataset.section) return;
     e.preventDefault();
     const rect = row.getBoundingClientRect();
     const before = e.clientY - rect.top < rect.height / 2;
@@ -1156,7 +2047,7 @@ function attachLabelRowDrag(row, list) {
     e.preventDefault();
     const id = list.dataset.dragging;
     clear();
-    if (!id) return;
+    if (!id || list.dataset.dragSection !== row.dataset.section) return;
     moveLabel(id, row.dataset.id, row.dataset.dropPosition || 'before');
     openLabelEditor();
   });
@@ -1277,6 +2168,21 @@ function resetOrder() {
   updateResetButton();
   updateApplyButton();
   setApplyBtnSub('');
+}
+
+// Returns to the tab the user was last on for this page (see lastPopupTab
+// in content.js), once per popup opening.
+let lastTabRestored = false;
+async function restoreLastTab(tabId) {
+  if (lastTabRestored) return;
+  lastTabRestored = true;
+  let res;
+  try {
+    res = await sendToTab(tabId, { type: 'SFL_GET_LAST_TAB' });
+  } catch (err) {
+    return;
+  }
+  if (res && res.tab === 'targets' && priceRules.size) setActiveTab('targets');
 }
 
 async function applyPendingOrder(tabId) {
@@ -1487,6 +2393,10 @@ function setMsg(text, isWarning, isLoading) {
   modalEl.textContent = text;
   modalEl.classList.toggle('warning', !!isWarning);
   modalEl.classList.toggle('loading', !!isLoading);
+
+  // ...and into the Price targets tab's load banner, where neither shows.
+  document.body.classList.toggle('msg-loading', !!isLoading);
+  document.querySelectorAll('.targetsLoadingText').forEach((t) => { t.textContent = text; });
 }
 
 function setStatus(text, isError) {
@@ -1509,11 +2419,14 @@ function setApplyBtnSub(text) {
 function setIncompleteBanner(show) {
   $('incompleteBanner').style.display = show ? 'flex' : 'none';
   $('modalIncompleteBanner').style.display = show ? 'flex' : 'none';
+  // The Price targets tab shows its own version (.targetsLoadBanner).
+  document.body.classList.toggle('items-incomplete', show);
 }
 
 function setLoadAllDisabled(disabled) {
   $('loadAllBtnInline').disabled = disabled;
   $('loadAllBtnModal').disabled = disabled;
+  document.querySelectorAll('.loadAllBtnTargets').forEach((btn) => { btn.disabled = disabled; });
 }
 
 // Merge a fresh snapshot from the page into our local order/metadata rather
@@ -1559,10 +2472,12 @@ function startWatching(tabId) {
     if (items.length === 0) return;
 
     const added = mergeItems(items);
-    if (added > 0) {
+    if (applyPriceRules()) {
+      commitLabelChange();
+    } else if (added > 0) {
       renderList();
-      updateResetButton();
     }
+    if (added > 0) updateResetButton();
 
     if (loadingAll) {
       setMsg(`Scrolling to load all saved items… ${order.length} found so far.`, false, true);
@@ -1674,6 +2589,7 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
 
   const items = (res && res.items) || [];
   mergeItems(items);
+  if (applyPriceRules()) saveLabels();
   await applyPendingOrder(tab.id);
   fetchCartItems();
 
@@ -1690,6 +2606,7 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
   updateResetButton();
   updateApplyButton();
   scheduleApplyEstimate();
+  restoreLastTab(tab.id);
 
   // In case a reorder from a previous popup session is still running.
   // Only relevant right after the popup opens — not after we've already
@@ -1717,11 +2634,13 @@ function setControlsDisabled(disabled) {
   $('settingsBtn').disabled = disabled;
   $('settingsBtnModal').disabled = disabled;
   $('gridViewBtn').disabled = disabled;
-  ['addLabelBtn', 'addLabelBtnModal', 'labelFilter', 'labelFilterModal', 'inBetweenBtn', 'inBetweenBtnModal']
+  ['labelFilter', 'labelFilterModal', 'inBetweenBtn', 'inBetweenBtnModal']
     .forEach((id) => { $(id).disabled = disabled; });
+  document.querySelectorAll('.targetsFilter').forEach((select) => { select.disabled = disabled; });
   if (disabled) { closeContextMenu(); dismissDialog(); }
   $('loadAllBtnInline').disabled = disabled;
   $('loadAllBtnModal').disabled = disabled;
+  document.querySelectorAll('.loadAllBtnTargets').forEach((btn) => { btn.disabled = disabled; });
   $('list').classList.toggle('disabled', disabled);
   $('tileGrid').classList.toggle('disabled', disabled);
   $('tableViewBtn').disabled = disabled;
@@ -1980,7 +2899,7 @@ async function syncNow() {
 // off on the other computers too.
 function confirmDeleteSynced() {
   const text = document.createElement('p');
-  text.textContent = 'This removes your settings and labels from your Chrome account and turns sync off on all your computers. ' +
+  text.textContent = 'This removes your settings, labels and price targets from your Chrome account and turns sync off on all your computers. ' +
     'Each computer keeps its own copy.';
   openDialog('Delete synced data', [text], [
     { label: 'Cancel' },
@@ -2015,15 +2934,16 @@ async function onSyncToggle() {
   }
   const items = {};
   labelsOf.forEach((ids, key) => { if (ids.size) items[key] = [...ids]; });
-  const here = { labels, items };
+  const here = { labels, items, priceRules: Object.fromEntries(priceRules) };
   const synced = remote.labels;
   if (!synced || !synced.labels.length || !labels.length || sameLabelData(here, synced)) {
     setSyncEnabled(true);
     return;
   }
   const text = document.createElement('p');
-  text.textContent = `Chrome sync already has labels from another computer (${synced.labels.length}), ` +
-    `and they differ from this computer's (${labels.length}). Which should be kept on both?`;
+  text.textContent = `Chrome sync already has labels and price targets from another computer ` +
+    `(${synced.labels.length} labels, ${Object.keys(synced.priceRules || {}).length} targets), and they differ from ` +
+    `this computer's (${labels.length} labels, ${priceRules.size} targets). Which should be kept on both?`;
   openDialog('Turn on sync', [text], [
     { label: 'Cancel' },
     {
@@ -2034,7 +2954,8 @@ async function onSyncToggle() {
       label: 'Synced',
       primary: true,
       onClick: () => {
-        chrome.storage.local.set({ [LABELS_STORAGE_KEY]: synced }, () => {
+        const here = { priceRules: Object.fromEntries(priceRules) };
+        chrome.storage.local.set({ [LABELS_STORAGE_KEY]: withLocalRuleFields(synced, here) }, () => {
           loadLabels().then(() => { commitLabelChange(); setSyncEnabled(true); });
         });
       }
@@ -2091,7 +3012,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('loadAllBtnInline').addEventListener('click', loadAllItems);
   $('loadAllBtnModal').addEventListener('click', loadAllItems);
+  document.querySelectorAll('.loadAllBtnTargets').forEach((btn) => btn.addEventListener('click', loadAllItems));
   $('gridViewBtn').addEventListener('click', () => setGridMode(true));
+  document.querySelectorAll('.savedTabBtn').forEach((btn) => btn.addEventListener('click', () => setActiveTab('saved')));
+  document.querySelectorAll('.targetsTabBtn').forEach((btn) => btn.addEventListener('click', () => setActiveTab('targets')));
+  document.querySelectorAll('.targetsFilter').forEach((select) => select.addEventListener('change', () => {
+    if (onFilterAction(select, targetFilter, true)) return;
+    targetFilter = select.value;
+    renderPriceTargets();
+  }));
   $('closeGridBtn').addEventListener('click', () => {
     // With Extended set as the default view there's no plain popup to fall
     // back to, so closing the grid there closes the popup entirely instead.
@@ -2126,9 +3055,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settingsBtnModal').addEventListener('click', () => toggleSettingsPanel());
   $('settingsBackdrop').addEventListener('click', () => toggleSettingsPanel(false));
   $('closeSettingsBtn').addEventListener('click', () => toggleSettingsPanel(false));
-  const addLabel = () => promptLabelName('New label', '', (name) => createLabel(name));
-  $('addLabelBtn').addEventListener('click', addLabel);
-  $('addLabelBtnModal').addEventListener('click', addLabel);
   $('labelFilter').addEventListener('change', (e) => onLabelFilterChange(e.target));
   $('labelFilterModal').addEventListener('change', (e) => onLabelFilterChange(e.target));
   const toggleInBetween = () => { showInBetween = !showInBetween; renderList(); };
