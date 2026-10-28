@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'sfl_settings';
   const DEFAULT_SETTINGS = {
-    bumpDelayMs: 600,
+    bumpDelayMs: 500,
     reloadAfterApply: true
   };
 
@@ -36,7 +36,7 @@
   let lastPopupTab = 'saved';
 
   // The rest of the popup's view (filters, scroll positions, selection,
-  // grid view, undo/redo history — see "View memory" in popup.js), kept the
+  // undo/redo history — see "View memory" in popup.js), kept the
   // same way so reopening the popup picks up where it left off until a
   // reload. Each SFL_SET_VIEW_STATE replaces the top-level fields it sends.
   let popupViewState = {};

@@ -37,7 +37,7 @@ FEATURES
 • Right-click an item to add it to your cart while keeping it in Saved for later, open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
 • Your in-progress arrangement survives closing the popup, until you reload or leave the page
-• Optional sync: keep your settings, labels and price targets in sync across your computers through your own Chrome account. Off by default; you can sync on demand or delete the synced copy at any time.
+• Optional sync: keep your settings, labels and price targets in sync across your computers through your own Chrome account. Off by default; sync automatically or only when you click Sync now, and delete the synced copy at any time.
 • The toolbar icon only lights up on Amazon cart pages, where it can actually do something
 
 PRIVACY
@@ -74,7 +74,7 @@ Lets the user reorder the items in their Amazon "Saved for later" cart list and 
 **storage**
 
 ```text
-Saves the user's extension settings (delay between actions, default view, etc.) and the labels (and price targets) they put on items, locally in their browser. If the user turns on the optional sync setting, the same settings, labels and price targets (without item thumbnails) are also stored with chrome.storage.sync in their own Chrome account so they appear on their other computers. Nothing is sent to the developer or any third party.
+Saves the user's extension settings (delay between actions, default view, etc.) and the labels (and price targets) they put on items, locally in their browser. If the user turns on the optional automatic sync setting or clicks Sync now, the same settings, labels and price targets (without item thumbnails) are also stored with chrome.storage.sync in their own Chrome account so they appear on their other computers. Nothing is sent to the developer or any third party.
 ```
 
 **Host permission (content script on Amazon storefront domains)**

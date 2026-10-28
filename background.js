@@ -45,29 +45,37 @@ function scheduleSync(delay = SYNC_DEBOUNCE_MS) {
 }
 
 // Runs reconciles one at a time; resolves once this one has finished.
-function runSync() {
+function runSync(manual = false) {
   clearTimeout(syncTimer);
-  syncChain = syncChain.then(reconcile, reconcile);
+  const run = () => reconcile(manual);
+  syncChain = syncChain.then(run, run);
   return syncChain;
 }
 
 // Copies each data set from whichever side (local or sync) was saved more
 // recently to the other. Data saved before sync existed has no updatedAt and
 // counts as oldest, but still beats having nothing on the other side.
-// If the synced data was deleted (from any computer) after sync was turned
-// on here, turns sync off here instead, so it isn't uploaded again.
+// Automatic syncs only run while it's on here (flag.enabled); a manual one
+// (Sync now) runs either way.
+// If the synced data was deleted (from any computer) after automatic sync
+// was turned on here, turns it off here instead, so it isn't uploaded
+// again. A manual sync is asked for, so it uploads anyway — and moves
+// enabledAt past the deletion, so automatic sync isn't turned off for it.
 // Resolves to the status it recorded: { error, at, notice }.
-async function reconcile() {
+async function reconcile(manual = false) {
   const local = await chrome.storage.local.get([SYNC_FLAG_KEY, ...Object.values(SYNCED_KEYS)]);
-  const flag = local[SYNC_FLAG_KEY];
-  if (!(flag && flag.enabled)) return null;
+  const flag = local[SYNC_FLAG_KEY] || {};
+  if (!flag.enabled && !manual) return null;
   let status = { error: null, at: Date.now() };
   try {
     const remote = await readSynced();
     if (remote.deletedAt && remote.deletedAt > (flag.enabledAt || 0)) {
-      status = { error: null, notice: 'deleted' };
-      await chrome.storage.local.set({ [SYNC_FLAG_KEY]: { enabled: false }, [SYNC_STATUS_KEY]: status });
-      return status;
+      if (!manual) {
+        status = { error: null, notice: 'deleted' };
+        await chrome.storage.local.set({ [SYNC_FLAG_KEY]: { enabled: false }, [SYNC_STATUS_KEY]: status });
+        return status;
+      }
+      await chrome.storage.local.set({ [SYNC_FLAG_KEY]: { ...flag, enabledAt: Date.now() } });
     }
     const toLocal = {};
     for (const name of Object.keys(SYNCED_KEYS)) {
@@ -94,10 +102,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 chrome.runtime.onStartup.addListener(() => scheduleSync(0));
 chrome.runtime.onInstalled.addListener(() => scheduleSync(0));
-// Sent by the popup when it opens (to pick up anything missed) and by its
-// "Sync now" button, which waits for the result.
+// Sent by the popup when it opens (to pick up anything missed, if automatic
+// sync is on) and by its "Sync now" button (manual: true), which waits for
+// the result.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.type !== 'SFL_SYNC_NOW') return false;
-  runSync().then((status) => sendResponse(status), (e) => sendResponse({ error: String(e) }));
+  runSync(!!msg.manual).then((status) => sendResponse(status), (e) => sendResponse({ error: String(e) }));
   return true;
 });

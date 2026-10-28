@@ -1,9 +1,9 @@
 const STORAGE_KEY = 'sfl_settings';
 const DEFAULTS = {
-  bumpDelayMs: 600,
+  bumpDelayMs: 500,
   reloadAfterApply: true,
   tileSize: 'm',
-  defaultView: 'popup',
+  defaultView: 'grid',
   titleLinksEnabled: true,
   tableView: false,
   theme: 'auto'
@@ -27,7 +27,7 @@ let gridMode = false;
 let tableView = false;
 let tileSize = 'm';
 let titleLinksEnabled = true;
-let defaultView = 'popup'; // 'grid' means Extended is the default — closeGridBtn closes the popup instead of returning to compact
+let defaultView = 'grid'; // which view the popup opens in: 'grid' (Extended) or 'popup' (Compact)
 const TILE_SIZES = { s: { min: '110px', img: '70px' }, m: { min: '150px', img: '100px' }, l: { min: '200px', img: '140px' } };
 
 // User-defined labels ("Grocery", "Electronics"…) that can be put on items
@@ -301,7 +301,13 @@ function setTableView(on, persist = true) {
   $('targetsListModal').classList.toggle('table-view', on);
   const btn = $('tableViewBtn');
   btn.classList.toggle('active', on);
-  btn.textContent = on ? '▦' : '☰';
+  // The view it switches to: "view-grid" / "view-list" from Material Design
+  // Icons (@mdi/svg 7.4.47, Apache-2.0).
+  const path = on
+    ? 'M3,11H11V3H3M3,21H11V13H3M13,21H21V13H13M13,3V11H21V3'
+    : 'M9,5V9H21V5M9,19H21V15H9M9,14H21V10H9M4,9H8V5H4M4,19H8V15H4M4,14H8V10H4V14Z';
+  btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+  btn.setAttribute('aria-label', on ? 'Switch to grid view' : 'Switch to table view');
   btn.title = on ? 'Switch to grid view' : 'Switch to table view';
   // Zoom doesn't apply to the single-column table layout.
   $('gridModalHeader').classList.toggle('table-view', on);
@@ -474,16 +480,20 @@ function setupTooltips() {
 
 function setGridMode(on) {
   gridMode = on;
+  // Each view gets fitted afresh (fitBodyToPopup): a cap measured for the
+  // other view, or mid-resize, would otherwise stay and add a scrollbar.
+  document.body.style.maxWidth = '';
+  document.body.style.maxHeight = '';
   document.body.classList.toggle('grid-mode', on);
   matchTargetsFooterHeight();
   applyPendingScroll();
-  saveViewState({ gridMode: on });
 }
 
 // Chrome caps popups at 800x600 screen pixels, so at a page zoom above 100%
 // the body's fixed 800px width / 600px max-height no longer fit and the
 // popup shows scrollbars. Once the popup has had time to grow, any remaining
 // overflow means it hit the cap — shrink the body to the space it got.
+// setGridMode clears these caps, so they're only ever for the current view.
 let fitBodyTimer = null;
 function fitBodyToPopup() {
   clearTimeout(fitBodyTimer);
@@ -494,6 +504,10 @@ function fitBodyToPopup() {
   }, 300);
 }
 window.addEventListener('resize', fitBodyToPopup);
+// Switching views measures the footer before the popup has finished
+// resizing (at the compact width the saved footer wraps and measures far
+// taller), so measure again once the window has its new size.
+window.addEventListener('resize', matchTargetsFooterHeight);
 new ResizeObserver(fitBodyToPopup).observe(document.body);
 
 function renderCartList() {
@@ -684,6 +698,17 @@ function matchesLabelFilter(key) {
 // 'match' if the item passes the label filter, 'between' if it doesn't but
 // "Show interposing items" is on and it sits between the first and last
 // match in the full order (idx is its index in `order`), otherwise null.
+// Whether the label filter leaves any non-matching item between its first
+// and last match (what "Show interposing items" would reveal).
+function hasInterposingItems() {
+  if (labelFilter === 'all') return false;
+  const first = order.findIndex(matchesLabelFilter);
+  if (first === -1) return false;
+  let last = order.length - 1;
+  while (!matchesLabelFilter(order[last])) last--;
+  return order.slice(first, last + 1).some((k) => !matchesLabelFilter(k));
+}
+
 function labelVisibility(key, idx) {
   if (matchesLabelFilter(key)) return 'match';
   if (!showInBetween) return null;
@@ -1526,6 +1551,11 @@ function renderPriceTargetRows(listEl) {
       e.preventDefault();
       openTargetMenu(rid, e.clientX, e.clientY);
     });
+    // Clicking a row edits its target; the title link still opens the product.
+    li.addEventListener('click', (e) => {
+      if (applyInProgress || e.target.closest('a, button, input, select')) return;
+      openPriceRuleDialog(key, rid);
+    });
 
     const handle = document.createElement('span');
     handle.className = 'handle';
@@ -1556,7 +1586,9 @@ function renderPriceTargetRows(listEl) {
       meta.appendChild(chip);
     });
     const range = document.createElement('span');
+    range.className = 'target-range';
     range.textContent = `at ${formatPriceRange(rule, item.priceText)}`;
+    range.title = range.textContent; // the compact list may shorten it
     meta.appendChild(range);
     const price = document.createElement('span');
     price.className = 'price-tag';
@@ -1573,18 +1605,22 @@ function renderPriceTargetRows(listEl) {
     }
     if (!onPage) {
       const off = document.createElement('span');
+      off.className = 'target-note';
       off.textContent = "Not on this page — price isn't being checked";
+      off.title = off.textContent;
       meta.appendChild(off);
     }
     if (rule.muted) {
       const muted = document.createElement('span');
+      muted.className = 'target-note';
       muted.textContent = 'Notifications off';
       muted.title = 'Turn back on with Edit';
       meta.appendChild(muted);
     }
     main.append(makeTitleEl({ title: item.title || key, url: item.url }, key), meta);
 
-    // Editing and deleting are in the row's right-click menu (openTargetMenu).
+    // Clicking the row edits the target; deleting is in its right-click
+    // menu (openTargetMenu).
     li.append(handle, imgWrap, main);
     listEl.appendChild(li);
   });
@@ -1707,9 +1743,12 @@ function renderLabelFilter() {
     appendFilterActions(select);
     select.value = labelFilter;
   });
+  // Only offered when some non-matching item sits between two matches.
+  const interposing = hasInterposingItems();
+  if (!interposing) showInBetween = false;
   ['inBetweenBtn', 'inBetweenBtnModal'].forEach((id) => {
     const btn = $(id);
-    btn.style.display = labelFilter === 'all' ? 'none' : '';
+    btn.style.display = interposing ? '' : 'none';
     btn.classList.toggle('active', showInBetween);
     btn.setAttribute('aria-pressed', String(showInBetween));
     const text = `${showInBetween ? 'Hide' : 'Show'} interposing items`;
@@ -2287,9 +2326,11 @@ async function restoreLastTab(tabId) {
 }
 
 // ---- View memory ----
-// The popup's view — filters, selection, grid view, undo/redo history and
-// scroll positions — is remembered by the page (until it reloads), like the
-// last tab, and restored once per popup opening (restoreLastTab). Saved as
+// The popup's view — filters, selection, undo/redo history and scroll
+// positions — is remembered by the page (until it reloads), like the
+// last tab, and restored once per popup opening (restoreLastTab). Not which
+// view is open: the popup always opens in the Default view setting, and the
+// expand / collapse buttons only switch views until it closes. Saved as
 // it changes, since there's no reliable moment to save on close; nothing is
 // saved until the restore has run, so start-up rendering can't overwrite it.
 // A scroller that's hidden at restore (e.g. the grid while in the compact
@@ -2345,7 +2386,6 @@ async function restoreViewState(tabId) {
   renderList();
   renderSelection();
   updateHistoryButtons();
-  if (typeof state.gridMode === 'boolean' && state.gridMode !== gridMode) setGridMode(state.gridMode);
   savedScroll = { ...(state.scroll || {}) };
   pendingScroll = { ...savedScroll };
   viewRestored = true;
@@ -2634,8 +2674,30 @@ function setStatus(text, isError) {
 
 // Quiet space at the bottom of the popup for secondary messaging (tips,
 // announcements) that shouldn't compete with #msg/#status for attention.
-function setFooterMsg(text) {
-  $('popupFooter').textContent = text || '';
+// dismissKey: adds a ✕ that hides the message for good on this computer
+// (remembered in chrome.storage.local under that key), and skips showing it
+// if it was dismissed before.
+function setFooterMsg(text, dismissKey) {
+  const footer = $('popupFooter');
+  footer.textContent = '';
+  if (!text) return;
+  if (!dismissKey) { footer.textContent = text; return; }
+  chrome.storage.local.get(dismissKey, (res) => {
+    if (res[dismissKey]) return;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'footer-dismiss';
+    close.textContent = '✕';
+    close.title = 'Dismiss';
+    close.setAttribute('aria-label', 'Dismiss tip');
+    close.addEventListener('click', () => {
+      footer.textContent = '';
+      chrome.storage.local.set({ [dismissKey]: true });
+    });
+    const msg = document.createElement('span');
+    msg.textContent = text;
+    footer.append(msg, close);
+  });
 }
 
 function setApplyBtnSub(text) {
@@ -2743,7 +2805,7 @@ function pollLoadAllStatus(tabId) {
   return () => clearInterval(handle);
 }
 
-// skipScroll=true (default, used on popup open / Refresh): quick scan of
+// skipScroll=true (default, used on popup open): quick scan of
 // whatever Amazon has already rendered, no page scrolling.
 // skipScroll=false (used by the "Load all items" button): scrolls the page
 // to force Amazon to lazy-load every saved item first.
@@ -2785,7 +2847,7 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
       setTimeout(() => fetchItems(skipScroll, checkForInProgressApply, retryCount + 1), PING_RETRY_DELAY_MS);
       return;
     }
-    setMsg('No "Saved for later" section found on this page. Scroll to it or reload, then hit Refresh.');
+    setMsg('No "Saved for later" section found on this page. Scroll to it or reload, then reopen this popup.');
     setLoadAllDisabled(false);
     return;
   }
@@ -2855,8 +2917,8 @@ function loadAllItems() {
 // applied — the list, settings, load-all — since the page's DOM and item
 // keys are shifting under bumpItem and none of those actions are safe to
 // trigger mid-apply. Apply's own button is handled separately since it also
-// carries the live countdown text. refreshBtn is left alone here — it turns
-// into a Cancel button instead (see setRefreshBtnMode) and stays enabled.
+// carries the live countdown text. cancelBtn is left alone here — it's
+// shown only while applying (see setCancelVisible) and stays enabled.
 function setControlsDisabled(disabled) {
   $('settingsBtn').disabled = disabled;
   $('settingsBtnModal').disabled = disabled;
@@ -2881,13 +2943,11 @@ function setControlsDisabled(disabled) {
   updateHistoryButtons();
 }
 
-// Swaps refreshBtn between its normal "Refresh" behavior and a "Cancel"
-// button that halts an in-progress reorder.
-function setRefreshBtnMode(cancelling) {
-  const btn = $('refreshBtn');
-  btn.textContent = cancelling ? 'Cancel' : 'Refresh';
-  btn.title = cancelling ? 'Stop the in-progress reorder' : 'Quickly rescan without scrolling';
-  btn.classList.toggle('cancel', cancelling);
+// Shows the Cancel button (which halts an in-progress reorder) only while
+// one is running. There's no Refresh: the open popup rescans on its own.
+function setCancelVisible(visible) {
+  const btn = $('cancelBtn');
+  btn.hidden = !visible;
   btn.disabled = false;
 }
 
@@ -2896,8 +2956,8 @@ let cancelRequested = false;
 async function cancelApply() {
   if (!activeTabId || cancelRequested) return;
   cancelRequested = true;
-  setRefreshBtnMode(true);
-  $('refreshBtn').disabled = true;
+  setCancelVisible(true);
+  $('cancelBtn').disabled = true;
   setStatus('Cancelling…');
   try {
     await sendToTab(activeTabId, { type: 'SFL_CANCEL_APPLY' });
@@ -2913,7 +2973,7 @@ async function applyOrder() {
   $('applyBtn').disabled = true;
   $('applyBtnModal').disabled = true;
   setControlsDisabled(true);
-  setRefreshBtnMode(true);
+  setCancelVisible(true);
   setStatus('Starting…');
   try {
     await sendToTab(activeTabId, { type: 'SFL_APPLY_ORDER', order });
@@ -2923,7 +2983,7 @@ async function applyOrder() {
     applyInProgress = false;
     updateApplyButton();
     setControlsDisabled(false);
-    setRefreshBtnMode(false);
+    setCancelVisible(false);
     return;
   }
   pollStatus();
@@ -2965,7 +3025,7 @@ function pollStatus() {
         clearHistory();
         updateApplyButton();
         setControlsDisabled(false);
-        setRefreshBtnMode(false);
+        setCancelVisible(false);
         cancelRequested = false;
         // Give the reloaded page a moment to finish loading and re-inject
         // its content script before trying to reconnect.
@@ -2983,15 +3043,15 @@ function pollStatus() {
       $('applyBtn').disabled = true;
       $('applyBtnModal').disabled = true;
       setControlsDisabled(true);
-      setRefreshBtnMode(true);
-      $('refreshBtn').disabled = cancelRequested;
+      setCancelVisible(true);
+      $('cancelBtn').disabled = cancelRequested;
     } else if (s.error) {
       applyInProgress = false;
       setStatus(s.message, true);
       setApplyBtnSub('');
       updateApplyButton();
       setControlsDisabled(false);
-      setRefreshBtnMode(false);
+      setCancelVisible(false);
       cancelRequested = false;
       clearInterval(statusPollHandle);
     } else if (s.done) {
@@ -3000,7 +3060,7 @@ function pollStatus() {
       setStatus(s.message);
       setApplyBtnSub('');
       setControlsDisabled(false);
-      setRefreshBtnMode(false);
+      setCancelVisible(false);
       cancelRequested = false;
       clearInterval(statusPollHandle);
       // mergeItems only filters/appends onto the existing order/naturalOrder
@@ -3031,7 +3091,6 @@ function loadSettings(onLoaded) {
     $('theme').value = THEMES.includes(s.theme) ? s.theme : DEFAULTS.theme;
     applyTheme($('theme').value);
     defaultView = s.defaultView === 'grid' ? 'grid' : 'popup';
-    $('closeGridBtn').title = defaultView === 'grid' ? 'Close popup' : 'Close grid view';
     $('titleLinksEnabled').checked = s.titleLinksEnabled;
     titleLinksEnabled = s.titleLinksEnabled;
     applyTileSize(TILE_SIZES[s.tileSize] ? s.tileSize : DEFAULTS.tileSize, false);
@@ -3060,7 +3119,6 @@ function saveSettings() {
   // or e.g. toggling table view inside the grid would drop back to compact.
   const defaultViewChanged = s.defaultView !== defaultView;
   defaultView = s.defaultView;
-  $('closeGridBtn').title = defaultView === 'grid' ? 'Close popup' : 'Close grid view';
   if (defaultViewChanged) setGridMode(defaultView === 'grid');
   renderList();
   renderCartList();
@@ -3075,17 +3133,30 @@ function toggleSettingsPanel(forceOpen) {
 }
 
 // ---- Sync (see storage.js) ----
-// The popup flips the per-computer switch, settles a conflict when turning
-// it on, and offers Sync now / Delete synced data; background.js does the
-// actual copying.
+// The popup flips the per-computer automatic-sync switch, settles a
+// conflict the first time this computer syncs, and offers Sync now (which
+// works with automatic sync off too) / Delete synced data; background.js
+// does the actual copying.
+
+let syncFlag = {}; // this computer's SYNC_FLAG_KEY
+
+function writeSyncFlag(flag) {
+  syncFlag = flag;
+  chrome.storage.local.set({ [SYNC_FLAG_KEY]: flag });
+}
 
 function setSyncEnabled(enabled) {
   $('syncEnabled').checked = enabled;
-  $('syncNowBtn').disabled = !enabled;
   // enabledAt: synced data deleted before this point doesn't turn it back off.
-  chrome.storage.local.set({ [SYNC_FLAG_KEY]: enabled ? { enabled, enabledAt: Date.now() } : { enabled } });
-  if (!enabled) chrome.storage.local.remove(SYNC_STATUS_KEY);
-  renderSyncStatus(null);
+  // Turning it off keeps joined, including for flags saved before joined
+  // existed, whose automatic sync being on means this computer has synced.
+  writeSyncFlag(enabled ? { enabled, enabledAt: Date.now(), joined: true } : { enabled, joined: !!(syncFlag.joined || syncFlag.enabled) });
+  renderSyncStatus(lastSyncStatus);
+}
+
+// Whether this computer syncs at all: automatically, or by hand before.
+function syncInUse() {
+  return $('syncEnabled').checked || !!syncFlag.joined;
 }
 
 // status: { error, at, notice } as recorded by background.js, or
@@ -3096,60 +3167,78 @@ function renderSyncStatus(status) {
   const el = $('syncStatus');
   el.classList.remove('sync-error');
   el.textContent = '';
-  if (!status) return;
-  if (status.notice === 'deleted') {
-    el.textContent = 'Your synced data was deleted from another computer, so sync was turned off here. Everything is still saved on this computer.';
+  if (!status) {
+    el.textContent = 'Not synced yet.';
+  } else if (status.notice === 'deleted') {
+    el.textContent = 'Synced data was deleted on another computer, so automatic sync was turned off. Nothing was lost here.';
   } else if (status.notice === 'deletedHere') {
-    el.textContent = 'Synced data deleted. Everything is still saved on this computer.';
+    el.textContent = 'Synced data deleted. Nothing was lost here.';
   } else if (status.error) {
-    let reason = 'Chrome sync rejected the last update';
-    if (/QUOTA_BYTES/.test(status.error)) reason = 'Your labels are too large for Chrome sync (100 KB limit)';
-    else if (/WRITE_OPERATIONS/.test(status.error)) reason = 'Too many changes in a short time — try Sync now in a minute';
-    el.textContent = `${reason}. Everything is still saved on this computer.`;
+    let reason = 'Chrome sync rejected the update';
+    if (/QUOTA_BYTES/.test(status.error)) reason = 'Too large for Chrome sync (100 KB limit)';
+    else if (/WRITE_OPERATIONS/.test(status.error)) reason = 'Too many changes at once — try Sync now in a minute';
+    el.textContent = `${reason}. Nothing was lost here.`;
     el.classList.add('sync-error');
-  } else if (status.at && $('syncEnabled').checked) {
-    el.textContent = `Last synced ${new Date(status.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`;
+  } else if (status.at) {
+    el.textContent = `Last synced ${formatSyncTime(status.at)}.`;
   }
 }
 
-// The header's sync note in both views: when sync last ran, or that it
-// failed, while sync is on here. Clicking it opens the settings, where the
-// full status and Sync now are.
+// "3:42 PM" today, "Oct 27" before that.
+function formatSyncTime(ms) {
+  const at = new Date(ms);
+  return at.toDateString() === new Date().toDateString()
+    ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : at.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// The header's sync note in both views, while automatic sync is on: when
+// sync last ran, that it failed, or that it hasn't yet. (Settings always
+// shows the status.) Clicking it opens the settings, where the full status
+// and Sync now are.
 let lastSyncStatus = null;
 function renderSyncBadges() {
   const status = lastSyncStatus;
-  const enabled = $('syncEnabled').checked;
   document.querySelectorAll('.syncBadge').forEach((el) => {
     el.classList.remove('sync-error');
-    el.hidden = !enabled || !status || !(status.error || status.at);
+    el.hidden = !$('syncEnabled').checked;
     if (el.hidden) return;
-    if (status.error) {
+    if (status && status.error) {
       el.textContent = '⚠ Sync failed';
       el.title = 'Sync failed — click for details';
       el.classList.add('sync-error');
+    } else if (status && status.at) {
+      el.textContent = `Synced ${formatSyncTime(status.at)}`;
+      el.title = `Last synced ${new Date(status.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} — click for sync settings`;
     } else {
-      const at = new Date(status.at);
-      const today = at.toDateString() === new Date().toDateString();
-      el.textContent = `Synced ${today
-        ? at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-        : at.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-      el.title = `Last synced ${at.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} — click for sync settings`;
+      el.textContent = 'Not synced';
+      el.title = 'Click for sync settings';
     }
   });
 }
 
-async function syncNow() {
+// Works whether or not automatic sync is on. The first time this computer
+// syncs, it asks which copy to keep, as turning automatic sync on does.
+function syncNow() {
+  if (syncInUse()) { runManualSync(); return; }
+  settleSyncConflict('Sync now', () => {
+    writeSyncFlag({ ...syncFlag, joined: true });
+    runManualSync();
+  });
+}
+
+async function runManualSync() {
   const btn = $('syncNowBtn');
   btn.disabled = true;
   btn.textContent = 'Syncing…';
   let status;
   try {
-    status = await chrome.runtime.sendMessage({ type: 'SFL_SYNC_NOW' });
+    status = await chrome.runtime.sendMessage({ type: 'SFL_SYNC_NOW', manual: true });
   } catch (e) {
     status = { error: String(e.message || e) };
   }
   btn.textContent = 'Sync now';
-  btn.disabled = !$('syncEnabled').checked;
+  btn.disabled = false;
   renderSyncStatus(status);
 }
 
@@ -3166,7 +3255,10 @@ function confirmDeleteSynced() {
       label: 'Delete',
       danger: true,
       onClick: async () => {
-        setSyncEnabled(false);
+        // Not joined any more: there's no synced copy left to settle with.
+        $('syncEnabled').checked = false;
+        writeSyncFlag({ enabled: false });
+        chrome.storage.local.remove(SYNC_STATUS_KEY);
         try {
           await deleteSynced();
           renderSyncStatus({ notice: 'deletedHere' });
@@ -3178,12 +3270,18 @@ function confirmDeleteSynced() {
   ]);
 }
 
-// Turning sync on: if this computer and Chrome sync both have labels and
-// they differ, ask which to keep (otherwise the more recently saved copy
-// would silently replace the other). Settings just go by the newer copy.
-async function onSyncToggle() {
+function onSyncToggle() {
   if (!$('syncEnabled').checked) { setSyncEnabled(false); return; }
   $('syncEnabled').checked = false; // until settled
+  settleSyncConflict('Turn on automatic sync', () => setSyncEnabled(true));
+}
+
+// Before syncing (turning automatic sync on, or a first Sync now): if this
+// computer and Chrome sync both have labels and they differ, ask which to
+// keep (otherwise the more recently saved copy would silently replace the
+// other). Settings just go by the newer copy. Calls onSettled when there's
+// nothing to ask or once a copy is picked; not at all on Cancel.
+async function settleSyncConflict(title, onSettled) {
   let remote;
   try {
     remote = await readSynced();
@@ -3196,18 +3294,18 @@ async function onSyncToggle() {
   const here = { labels, items, priceRules: Object.fromEntries(priceRules) };
   const synced = remote.labels;
   if (!synced || !synced.labels.length || !labels.length || sameLabelData(here, synced)) {
-    setSyncEnabled(true);
+    onSettled();
     return;
   }
   const text = document.createElement('p');
   text.textContent = `Chrome sync already has labels and price targets from another computer ` +
     `(${synced.labels.length} labels, ${Object.keys(synced.priceRules || {}).length} targets), and they differ from ` +
     `this computer's (${labels.length} labels, ${priceRules.size} targets). Which should be kept on both?`;
-  openDialog('Turn on sync', [text], [
+  openDialog(title, [text], [
     { label: 'Cancel' },
     {
       label: "This computer's",
-      onClick: () => { saveLabels(); setSyncEnabled(true); } // a fresh save is the newer copy
+      onClick: () => { saveLabels(); onSettled(); } // a fresh save is the newer copy
     },
     {
       label: 'Synced',
@@ -3215,7 +3313,7 @@ async function onSyncToggle() {
       onClick: () => {
         const here = { priceRules: Object.fromEntries(priceRules) };
         chrome.storage.local.set({ [LABELS_STORAGE_KEY]: withLocalRuleFields(synced, here) }, () => {
-          loadLabels().then(() => { commitLabelChange(); setSyncEnabled(true); });
+          loadLabels().then(() => { commitLabelChange(); onSettled(); });
         });
       }
     }
@@ -3224,9 +3322,9 @@ async function onSyncToggle() {
 
 function setupSync() {
   chrome.storage.local.get([SYNC_FLAG_KEY, SYNC_STATUS_KEY], (res) => {
-    const enabled = !!(res[SYNC_FLAG_KEY] && res[SYNC_FLAG_KEY].enabled);
+    syncFlag = res[SYNC_FLAG_KEY] || {};
+    const enabled = !!syncFlag.enabled;
     $('syncEnabled').checked = enabled;
-    $('syncNowBtn').disabled = !enabled;
     renderSyncStatus(res[SYNC_STATUS_KEY]);
     if (enabled) chrome.runtime.sendMessage({ type: 'SFL_SYNC_NOW' }).catch(() => {});
   });
@@ -3239,9 +3337,8 @@ function setupSync() {
     if (area !== 'local') return;
     // background.js turns sync off when the synced data was deleted elsewhere.
     if (changes[SYNC_FLAG_KEY]) {
-      const enabled = !!(changes[SYNC_FLAG_KEY].newValue && changes[SYNC_FLAG_KEY].newValue.enabled);
-      $('syncEnabled').checked = enabled;
-      $('syncNowBtn').disabled = !enabled;
+      syncFlag = changes[SYNC_FLAG_KEY].newValue || {};
+      $('syncEnabled').checked = !!syncFlag.enabled;
       renderSyncBadges();
     }
     if (changes[SYNC_STATUS_KEY] && changes[SYNC_STATUS_KEY].newValue) renderSyncStatus(changes[SYNC_STATUS_KEY].newValue);
@@ -3260,22 +3357,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   loadLabels().then(renderList);
   loadItems(true);
-  setFooterMsg('💡 Try Grid view for reordering long lists faster.');
+  setFooterMsg('💡 Try Extended view (top-right button) for reordering long lists faster.', 'sfl_tip_extended_dismissed');
   setupImagePreview();
   setupScrollMemory();
   setupTooltips();
+  // Built from DEFAULTS so it can't drift from the real default.
+  const delayHelp = 'How long to wait after moving each item before the next. ' +
+    'Raise it if items end up out of order or stuck in your cart. ' +
+    `Default ${DEFAULTS.bumpDelayMs} ms; going lower isn't recommended, as Amazon may miss moves.`;
+  $('delay').title = delayHelp;
+  $('delay').placeholder = String(DEFAULTS.bumpDelayMs);
+  const delayLabel = document.querySelector('label[for="delay"]');
+  delayLabel.textContent = `Delay between actions (ms, default ${DEFAULTS.bumpDelayMs})`;
+  delayLabel.title = delayHelp;
 
-  $('refreshBtn').addEventListener('click', () => {
-    if (applyInProgress) {
-      cancelApply();
-    } else {
-      loadItems();
-    }
-  });
+  $('cancelBtn').addEventListener('click', () => { if (applyInProgress) cancelApply(); });
   $('loadAllBtnInline').addEventListener('click', loadAllItems);
   $('loadAllBtnModal').addEventListener('click', loadAllItems);
   document.querySelectorAll('.loadAllBtnTargets').forEach((btn) => btn.addEventListener('click', loadAllItems));
-  $('gridViewBtn').addEventListener('click', () => setGridMode(true));
   document.querySelectorAll('.savedTabBtn').forEach((btn) => btn.addEventListener('click', () => setActiveTab('saved')));
   document.querySelectorAll('.targetsTabBtn').forEach((btn) => btn.addEventListener('click', () => setActiveTab('targets')));
   document.querySelectorAll('.targetsFilter').forEach((select) => select.addEventListener('change', () => {
@@ -3284,12 +3383,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPriceTargets();
     saveFilters();
   }));
-  $('closeGridBtn').addEventListener('click', () => {
-    // With Extended set as the default view there's no plain popup to fall
-    // back to, so closing the grid there closes the popup entirely instead.
-    if (defaultView === 'grid') { window.close(); return; }
-    setGridMode(false);
-  });
+  $('gridViewBtn').addEventListener('click', () => setGridMode(true));
+  $('closeGridBtn').addEventListener('click', () => setGridMode(false));
   $('tableViewBtn').addEventListener('click', () => setTableView(!tableView));
   document.querySelectorAll('.tileSizeBtn').forEach((btn) => {
     btn.addEventListener('click', () => applyTileSize(btn.dataset.size));

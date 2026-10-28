@@ -42,15 +42,22 @@
     transition: width 0.15s ease;
   }
   body.grid-mode { width: 800px; max-height: 600px; }
-  #header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
-  h3 { margin: 0; font-size: 15px; color: var(--text); }
-  #headerActions { display: flex; gap: 6px; flex-shrink: 0; }
-  #headerActions button {
+  /* Lined up with the extended view's toolbar (#gridModalHeader: 6px from
+     the top, 14px in from the sides, 13px title, full-width divider under
+     it) so the title and buttons stay put when switching views. The
+     negative side margins undo the body's 12px padding for the divider. */
+  #header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin: -6px -12px 0; padding: 0 14px 6px; border-bottom: 1px solid var(--border);
+  }
+  h3 { margin: 0; font-size: 13px; color: var(--text); }
+  #headerActions { display: flex; gap: 10px; flex-shrink: 0; } /* #gridModalHeader's gap */
+  #headerActions button:not(.syncBadge) {
     width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
     font-size: 14px; line-height: 1; background: var(--btn-bg); border: 1px solid var(--border);
     color: var(--text); box-shadow: none; border-radius: 999px; flex-shrink: 0;
   }
-  #headerActions button:hover { background: var(--btn-hover); }
+  #headerActions button:not(.syncBadge):hover { background: var(--btn-hover); }
   /* Last sync time beside the header buttons (renderSyncBadges). */
   .syncBadge {
     background: none; border: none; box-shadow: none; padding: 0 2px; font-size: 11px;
@@ -59,10 +66,9 @@
   .syncBadge:hover { color: var(--text); text-decoration: underline; }
   .syncBadge.sync-error { color: var(--danger-text); }
   .syncBadge[hidden] { display: none !important; }
-  #headerActions button.syncBadge { width: auto; height: auto; border: none; background: none; border-radius: 0; }
   #gridModalHeader .syncBadge { margin-left: auto; }
   #gridModalHeader .syncBadge:not([hidden]) + #tableViewBtn { margin-left: 0; }
-  #msg { color: var(--text-muted); font-size: 12px; margin: 5px 0; }
+  #msg { color: var(--text-muted); font-size: 11px; margin: 5px 0; } /* as in the extended footer */
   /* Shown only while at least one price target exists (renderPriceTargets). */
   .tabBar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 4px 0 6px; }
   .tabBar[hidden] { display: none; }
@@ -80,7 +86,7 @@
   /* The targets tab reuses the saved tab's slots so nothing moves: its hint
      takes #msg's place, and its filter takes the label controls' place in
      the same .labelBar (compact bar and grid header). */
-  #targetsHint { display: none; color: var(--text-muted); font-size: 12px; margin: 5px 0; }
+  #targetsHint { display: none; color: var(--text-muted); font-size: 11px; margin: 5px 0; }
   body.tab-targets #targetsHint { display: block; }
   .labelBar .targetsFilter { display: none; }
   body.tab-targets .labelBar .targetsFilter { display: block; }
@@ -94,12 +100,24 @@
   body.tab-targets #tileGrid, body.tab-targets #gridModalFooter { display: none !important; }
   #targetsList { box-sizing: border-box; list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
   /* Compact popup: rows like #list. */
-  #targetsList li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--divider); }
+  /* Sized like the saved list's rows (#list li), keeping the details line. */
+  #targetsList li { display: flex; align-items: center; gap: 8px; padding: 2px 14px 2px 10px; border-bottom: 1px solid var(--divider); }
+  .targetsList li[data-id] { cursor: pointer; }
   #targetsList li:last-child { border-bottom: none; }
   #targetsList li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
   #targetsList li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
-  #targetsList .imgwrap { width: 36px; height: 36px; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
-  #targetsList img { width: 36px; height: 36px; object-fit: contain; }
+  #targetsList .imgwrap { width: 24px; height: 24px; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
+  #targetsList img { width: 24px; height: 24px; object-fit: contain; }
+  #targetsList .target-main { gap: 1px; }
+  #targetsList .target-main .title { font-size: 12px; }
+  /* One details line: what doesn't fit ends in "…". The range and notes give
+     way; label chips (already capped, with their own "…"), the price and how
+     far off it is stay whole. */
+  #targetsList .target-meta { flex-wrap: nowrap; overflow: hidden; }
+  #targetsList .target-meta > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 4; }
+  #targetsList .target-meta > .label-chip,
+  #targetsList .target-meta > .price-tag,
+  #targetsList .target-meta > .target-gap { flex-shrink: 0; }
   /* Grid view: cards laid out exactly like #tileGrid's tiles (same columns,
      zoom, gaps and card style), or its table view's rows when that's on. */
   #targetsListModal {
@@ -141,6 +159,7 @@
   #targetsListModal.table-view .target-main { flex-direction: row; align-items: center; gap: 8px; }
   #targetsListModal.table-view .target-main .title { display: block; flex: 1; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
   #targetsListModal.table-view .target-meta { flex-wrap: nowrap; flex-shrink: 0; }
+  #targetsListModal.table-view .target-note { max-width: 160px; } /* leaves the title room */
   /* Both. */
   .targetsList li.filter-empty { justify-content: center; color: var(--text-muted); font-size: 12px; padding: 14px 8px; cursor: default; }
   .targetsList li[draggable="true"] { cursor: grab; user-select: none; }
@@ -150,6 +169,9 @@
   .target-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .target-main .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .target-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 11px; color: var(--text-muted); }
+  /* "Not on this page…" / "Notifications off": one line in every view,
+     ending in "…" when it doesn't fit (full text on hover). */
+  .target-meta > .target-note { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Notification cards for price targets that are in range (renderPriceAlerts). */
   .priceAlerts { display: flex; flex-direction: column; gap: 6px; margin: 0 0 6px; max-height: 150px; overflow-y: auto; }
   .priceAlerts[hidden] { display: none; }
@@ -200,20 +222,22 @@
   #list.disabled { pointer-events: none; opacity: 0.6; }
   #list li {
     display: flex; align-items: center; gap: 8px;
-    /* Extra right padding keeps label chips clear of the list's scrollbar. */
-    padding: 6px 14px 6px 8px; border-bottom: 1px solid var(--divider); background: var(--surface); cursor: grab;
+    /* Rows sized like the extended view's table rows (#tileGrid.table-view).
+       Extra right padding keeps label chips clear of the list's scrollbar. */
+    padding: 2px 14px 2px 10px; border-bottom: 1px solid var(--divider); background: var(--surface); cursor: grab;
   }
   #list li:last-child { border-bottom: none; }
   #list li.drag-source { opacity: 0.35; }
   #list li.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
   #list li.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
-  #list img { width: 36px; height: 36px; object-fit: contain; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
+  #list img { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; background: var(--img-bg); border-radius: 4px; }
   a.title { color: inherit; text-decoration: none; cursor: pointer; }
   a.title:hover { text-decoration: underline; color: var(--link); }
-  #list .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #list .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
   #list .badge {
-    width: 32px; text-align: center; font-size: 11px; font-weight: bold; background: #e77600; color: #fff;
-    border-radius: 999px; padding: 2px 4px; flex-shrink: 0; border: 1px solid #cc6900;
+    /* Just wide enough for three digits. */
+    width: 20px; text-align: center; font-size: 11px; font-weight: bold; background: #e77600; color: #fff;
+    border-radius: 999px; padding: 1px 2px; flex-shrink: 0; border: 1px solid #cc6900;
     cursor: text; -moz-appearance: textfield;
   }
   #list .badge:hover { border-color: #a34b00; }
@@ -250,6 +274,7 @@
     color: var(--text); box-shadow: none; border-radius: 999px;
   }
   #tableViewBtn:hover { background: var(--btn-hover); }
+  #tableViewBtn svg { display: block; width: 15px; height: 15px; fill: currentColor; }
   #tableViewBtn.active { background: var(--inverse-bg); color: var(--inverse-text); border-color: var(--inverse-bg); }
   #settingsBtnModal {
     width: 26px; height: 26px; padding: 0; display: flex; align-items: center; justify-content: center;
@@ -263,6 +288,9 @@
     border-radius: 999px; font-size: 13px; line-height: 1;
   }
   #closeGridBtn:hover { background: var(--btn-hover); }
+  /* The Extended (expand) / Compact (collapse) switch buttons. */
+  .viewSwitchBtn svg { display: block; width: 15px; height: 15px; margin: auto; fill: currentColor; }
+  .settingsIconBtn svg { display: block; width: 15px; height: 15px; margin: auto; fill: currentColor; }
 
   #tileGrid {
     list-style: none; margin: 0; padding: 8px 10px; flex: 1; min-height: 0; overflow-y: auto;
@@ -282,8 +310,9 @@
   #tileGrid.table-view li.tile.drag-over-before { box-shadow: inset 0 2px 0 0 #e77600; }
   #tileGrid.table-view li.tile.drag-over-after { box-shadow: inset 0 -2px 0 0 #e77600; }
   #tileGrid .badge {
-    width: 32px; text-align: center; font-size: 11px; font-weight: bold; background: #e77600; color: #fff;
-    border-radius: 999px; padding: 2px 4px; flex-shrink: 0; border: 1px solid #cc6900;
+    /* Just wide enough for three digits, like #list .badge. */
+    width: 20px; text-align: center; font-size: 11px; font-weight: bold; background: #e77600; color: #fff;
+    border-radius: 999px; padding: 2px 2px; flex-shrink: 0; border: 1px solid #cc6900;
     cursor: text; -moz-appearance: textfield; align-self: flex-start;
   }
   #tileGrid .badge:hover { border-color: #a34b00; }
@@ -314,7 +343,7 @@
   }
   #tileGrid.table-view li.tile:last-child { border-bottom: none; }
   #tileGrid.table-view li.tile .handle { display: block; color: var(--text-faint); flex-shrink: 0; }
-  #tileGrid.table-view .badge { align-self: center; width: 30px; font-size: 11px; padding: 1px 4px; }
+  #tileGrid.table-view .badge { align-self: center; width: 20px; font-size: 11px; padding: 1px 2px; }
   #tileGrid.table-view .imgwrap { width: 24px; height: 24px; margin: 0; flex-shrink: 0; }
   #tileGrid.table-view .title {
     -webkit-line-clamp: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
@@ -342,7 +371,7 @@
   #applyBtnModal {
     background: #ffd814; border: 1px solid #fcd200; color: #0f1111; font-weight: 600;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 1px; line-height: 1.2; padding: 5px 14px; font-size: 12px;
+    gap: 1px; line-height: 1.2; padding: 5px 14px; font-size: 12px; min-height: 28px; /* as tall as Reset */
   }
   #applyBtnModal:hover:not(:disabled) { background: #f7ca00; }
   #applyBtnModalSub { font-size: 9.5px; font-weight: 400; color: #6b5900; }
@@ -360,8 +389,16 @@
     color: var(--text); border-radius: 999px;
   }
   #cartList button:hover:not(:disabled) { background: var(--btn-hover); }
-  #actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  #actions #applyBtn { min-width: 100px; }
+  /* Same sizes, spacing and right-hand placement as the extended view's
+     footer buttons (#gridModalFooterActions: 8px apart, 14px in from the
+     right edge); Cancel, shown only while a reorder runs, sits on the left. */
+  #actions { display: flex; align-items: center; gap: 8px; margin: 8px 2px 0; flex-wrap: wrap; }
+  #actions button { font-size: 12px; padding: 6px 12px; }
+  #actions #cancelBtn { margin-right: auto; }
+  #actions #undoBtn { margin-left: auto; } /* stays right while Cancel is hidden */
+  #actions #applyBtn { flex: none; padding: 5px 14px; min-height: 28px; } /* as tall as Reset */
+  #actions .historyBtn { width: 28px; height: 28px; padding: 0; box-shadow: none; }
+  #actions .historyBtn svg { width: 15px; height: 15px; }
   button {
     padding: 7px 14px; font-size: 13px; border-radius: 999px; cursor: pointer;
     font-family: inherit; box-shadow: 0 2px 5px rgba(15, 17, 17, 0.15);
@@ -374,7 +411,7 @@
   }
   #applyBtn:hover:not(:disabled) { background: #f7ca00; }
   #applyBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  #applyBtnSub { font-size: 10px; font-weight: 400; color: #6b5900; }
+  #applyBtnSub { font-size: 9.5px; font-weight: 400; color: #6b5900; }
   #applyBtnSub:empty { display: none; }
   .historyBtn {
     width: 32px; padding: 0; flex-shrink: 0; font-size: 16px; line-height: 1;
@@ -387,26 +424,34 @@
   /* Undo/redo sit as a pair, a little tighter than the other buttons. */
   #undoBtn + #redoBtn, #undoBtnModal + #redoBtnModal { margin-left: -4px; }
   #gridModalFooterActions .historyBtn { width: 28px; height: 28px; font-size: 14px; box-shadow: none; }
-  #refreshBtn, #loadAllBtn, #resetBtn { background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); }
-  #refreshBtn:hover, #loadAllBtn:hover:not(:disabled), #resetBtn:hover:not(:disabled) { background: var(--btn-hover); }
+  #loadAllBtn, #resetBtn { background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); }
+  #loadAllBtn:hover:not(:disabled), #resetBtn:hover:not(:disabled) { background: var(--btn-hover); }
   #loadAllBtn:disabled, #resetBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  #refreshBtn.cancel { background: #c40000; border-color: #a80000; color: #fff; }
-  #refreshBtn.cancel:hover:not(:disabled) { background: #a80000; }
-  #refreshBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  #cancelBtn { background: #c40000; border: 1px solid #a80000; color: #fff; }
+  #cancelBtn:hover:not(:disabled) { background: #a80000; }
+  #cancelBtn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
   #status { margin-top: 5px; font-size: 12px; white-space: pre-wrap; color: var(--text); }
   #status:empty { margin-top: 0; }
   #status.error { color: var(--danger-text); }
   #settingsPanel {
     display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    z-index: 200; width: 300px; max-height: 80vh; overflow-y: auto; box-sizing: border-box;
+    z-index: 200; width: 300px; max-height: 80vh; overflow: hidden; box-sizing: border-box;
+    flex-direction: column;
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25); padding: 12px 16px 16px;
+    box-shadow: 0 8px 24px rgba(15, 17, 17, 0.25);
+  }
+  /* Only the settings scroll; the header and the links footer stay put. */
+  #settingsBody { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; }
+  #settingsFooter {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; border-top: 1px solid var(--divider); flex-shrink: 0;
   }
   #settingsBackdrop {
     display: none; position: fixed; inset: 0; z-index: 199; background: rgba(15, 17, 17, 0.35);
   }
-  #settingsBackdrop.show, #settingsPanel.show { display: block; }
-  #settingsPanelHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #settingsBackdrop.show { display: block; }
+  #settingsPanel.show { display: flex; }
+  #settingsPanelHeader { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 8px; flex-shrink: 0; }
   #settingsPanel h4 { margin: 0; font-size: 13px; color: var(--text); }
   #closeSettingsBtn {
     width: 26px; height: 26px; padding: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -442,21 +487,32 @@
   #settingsPanel .sync-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
   #settingsPanel #deleteSyncBtn { color: var(--danger-text); }
   #bmcLink {
-    display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+    display: inline-flex; align-items: center; gap: 4px;
     background: #FFDD00; color: #000; border: 1px solid #000; border-radius: 999px;
-    padding: 7px 14px; font-size: 13px; font-weight: 600; text-decoration: none;
+    padding: 3px 10px; font-size: 11px; font-weight: 600; text-decoration: none;
     box-shadow: 0 2px 5px rgba(15, 17, 17, 0.15);
   }
   #bmcLink:hover { background: #f2d200; }
   #projectLink {
-    display: block; margin-top: 10px; font-size: 11px; color: var(--link); text-decoration: none;
+    display: flex; align-items: center; gap: 3px;
+    font-size: 11px; color: var(--link); text-decoration: none;
   }
+  /* A fixed square icon: the ↗ character it replaces came from a fallback font and drew stretched. */
+  #bmcLink, #projectLink { white-space: nowrap; }
+  #projectLink svg { width: 12px; height: 12px; flex-shrink: 0; fill: currentColor; }
   #projectLink:hover { text-decoration: underline; }
   #popupFooter {
     margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--divider);
     font-size: 10.5px; line-height: 1.3; color: var(--text-faint); text-align: center;
   }
   #popupFooter:empty { display: none; }
+  /* With a ✕, the text wraps beside it rather than pushing it to a new line. */
+  #popupFooter:has(.footer-dismiss) { display: flex; align-items: center; justify-content: center; gap: 4px; }
+  #popupFooter .footer-dismiss {
+    flex-shrink: 0; padding: 0 4px; font-size: 10px; line-height: 1;
+    background: none; border: none; box-shadow: none; color: var(--text-faint);
+  }
+  #popupFooter .footer-dismiss:hover { color: var(--text); }
   /* The Price targets tab's own footer, in place of #popupFooter's tip. */
   .targetsFooter {
     display: none; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--divider);
@@ -680,8 +736,10 @@
     <h3>Reorder saved for later</h3>
     <div id="headerActions">
       <button type="button" class="syncBadge" hidden></button>
-      <button id="gridViewBtn" title="Expand into a tile view for reordering with less scrolling">⛶</button>
-      <button id="settingsBtn" title="Settings">⚙</button>
+      <!-- "arrow-expand" / "arrow-collapse" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0) -->
+      <button id="gridViewBtn" class="viewSwitchBtn" title="Extended view (until closed)" aria-label="Extended view until the popup closes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10,21V19H6.41L10.91,14.5L9.5,13.09L5,17.59V14H3V21H10M14.5,10.91L19,6.41V10H21V3H14V5H17.59L13.09,9.5L14.5,10.91Z"/></svg></button>
+      <!-- "cog" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0) -->
+      <button id="settingsBtn" class="settingsIconBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
     </div>
   </div>
   <div id="tabBar" class="tabBar" role="tablist" hidden>
@@ -689,8 +747,6 @@
     <button type="button" role="tab" class="tabBtn targetsTabBtn">Price targets</button>
   </div>
   <div id="priceAlerts" class="priceAlerts" hidden></div>
-  <div id="msg"></div>
-  <div id="targetsHint"></div>
 
   <div id="labelBar" class="labelBar">
     <select id="labelFilter" title="Show only items with this label"></select>
@@ -702,6 +758,9 @@
   <div id="targetsPanel" class="targetsPanel" role="tabpanel">
     <ul id="targetsList" class="targetsList"></ul>
   </div>
+  <!-- Under the list, like the extended view's footer message (#modalMsg). -->
+  <div id="msg"></div>
+  <div id="targetsHint"></div>
 
   <div id="gridModal">
     <div id="gridModalHeader">
@@ -719,8 +778,8 @@
       </div>
       <button type="button" class="syncBadge" hidden></button>
       <button type="button" id="tableViewBtn" title="Switch to table view">☰</button>
-      <button type="button" id="settingsBtnModal" title="Settings">⚙</button>
-      <button type="button" id="closeGridBtn" title="Close grid view">✕</button>
+      <button type="button" id="closeGridBtn" class="viewSwitchBtn" title="Compact view (until closed)" aria-label="Compact view until the popup closes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5,3.09L15,7.59V4H13V11H20V9H16.41L20.91,4.5L19.5,3.09M4,13V15H7.59L3.09,19.5L4.5,20.91L9,16.41V20H11V13H4Z"/></svg></button>
+      <button type="button" id="settingsBtnModal" class="settingsIconBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
     </div>
     <div id="tabBarModal" class="tabBar" role="tablist" hidden>
       <button type="button" role="tab" class="tabBtn savedTabBtn">Saved for later</button>
@@ -737,7 +796,7 @@
         <span class="targetsLoadingText"></span>
         <button type="button" class="loadAllBtnTargets">Load all</button>
       </div>
-      <span class="targetsFooterHint">Includes items no longer on this page. Drag ⠿ to arrange; right-click a saved item to add a target.</span>
+      <span class="targetsFooterHint">Includes items no longer on this page. Click a target to edit it, drag ⠿ to arrange; right-click a saved item to add a target.</span>
     </div>
     <div id="gridModalFooter">
       <div id="gridModalFooterMsgs">
@@ -760,7 +819,7 @@
   </div>
 
   <div id="actions">
-    <button id="refreshBtn" title="Quickly rescan without scrolling">Refresh</button>
+    <button id="cancelBtn" title="Stop the in-progress reorder" hidden>Cancel</button>
     <button id="undoBtn" class="historyBtn" title="Undo" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z"/></svg></button>
     <button id="redoBtn" class="historyBtn" title="Redo" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.4,10.6C16.55,9 14.15,8 11.5,8C6.85,8 2.92,11.03 1.54,15.22L3.9,16C4.95,12.81 7.95,10.5 11.5,10.5C13.45,10.5 15.23,11.22 16.62,12.38L13,16H22V7L18.4,10.6Z"/></svg></button>
     <button id="resetBtn" title="Restore the order items actually appear in on the page" disabled>Reset</button>
@@ -786,50 +845,57 @@
       <h4>Settings</h4>
       <button type="button" id="closeSettingsBtn" title="Close settings">✕</button>
     </div>
-    <label for="defaultView">Default view when opening the popup</label>
-    <select id="defaultView">
-      <option value="popup">Compact</option>
-      <option value="grid">Extended</option>
-    </select>
+    <div id="settingsBody">
+      <label for="defaultView">Default view when opening the popup</label>
+      <select id="defaultView">
+        <option value="grid" selected>Extended</option>
+        <option value="popup">Compact</option>
+      </select>
 
-    <label for="theme">Theme</label>
-    <select id="theme">
-      <option value="auto">Auto (match system)</option>
-      <option value="light">Light</option>
-      <option value="dark">Dark</option>
-    </select>
+      <label for="theme">Theme</label>
+      <select id="theme">
+        <option value="auto">Auto (match system)</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
 
-    <label for="delay">Delay between actions (ms)</label>
-    <input type="number" id="delay" min="500" max="10000" step="100">
+      <label for="delay">Delay between actions (ms)</label>
+      <input type="number" id="delay" min="0" max="10000" step="100">
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="reloadAfterApply" checked>
-      <label for="reloadAfterApply">Refresh the page after applying the order</label>
+      <div class="checkbox-row">
+        <input type="checkbox" id="reloadAfterApply" checked>
+        <label for="reloadAfterApply">Refresh the page after applying the order</label>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="titleLinksEnabled" checked>
+        <label for="titleLinksEnabled">Make item titles clickable links (opens product in background tab)</label>
+      </div>
+
+      <label for="syncEnabled">Sync across computers</label>
+      <p class="hint" title="Uses your own Chrome sync, so you need to be signed into Chrome with extension sync on. Nothing is shared with anyone else.">Settings, labels and price targets, through your Chrome account.</p>
+      <div class="checkbox-row">
+        <input type="checkbox" id="syncEnabled">
+        <label for="syncEnabled" title="Off: sync only when you click Sync now">Sync automatically</label>
+      </div>
+      <div class="sync-actions">
+        <button type="button" id="syncNowBtn" title="Sync right away (works with automatic sync off too)">Sync now</button>
+        <button type="button" id="deleteSyncBtn" title="Remove your settings, labels and price targets from your Chrome account">Delete synced data…</button>
+      </div>
+      <p id="syncStatus" class="hint" role="status"></p>
     </div>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="titleLinksEnabled" checked>
-      <label for="titleLinksEnabled">Make item titles clickable links (opens product in background tab)</label>
-    </div>
+    <div id="settingsFooter">
+      <a id="bmcLink" href="https://www.buymeacoffee.com/maxwellluong" target="_blank" rel="noopener noreferrer">
+        ☕ Buy me a coffee
+      </a>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="syncEnabled">
-      <label for="syncEnabled">Sync settings, labels and price targets across your computers</label>
+      <a id="projectLink" href="https://github.com/maxandcheeses/chrome-reorder-saved-for-later-amazon" target="_blank" rel="noopener noreferrer" title="View project on GitHub">
+        GitHub
+        <!-- "open-in-new" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0), as in the right-click menus -->
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14,3V5H17.59L7.76,14.83L9.17,16.24L19,6.41V10H21V3M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19V19Z"/></svg>
+      </a>
     </div>
-    <p class="hint">Uses your own Chrome sync, so it needs you signed into Chrome with extension sync on. Nothing is shared with anyone else.</p>
-    <div class="sync-actions">
-      <button type="button" id="syncNowBtn" title="Sync with your Chrome account right away" disabled>Sync now</button>
-      <button type="button" id="deleteSyncBtn" title="Remove your settings, labels and price targets from your Chrome account">Delete synced data…</button>
-    </div>
-    <p id="syncStatus" class="hint" role="status"></p>
-
-    <a id="bmcLink" href="https://www.buymeacoffee.com/maxwellluong" target="_blank" rel="noopener noreferrer">
-      ☕ Buy me a coffee
-    </a>
-
-    <a id="projectLink" href="https://github.com/maxandcheeses/chrome-reorder-saved-for-later-amazon" target="_blank" rel="noopener noreferrer">
-      View project on GitHub ↗
-    </a>
   </div>
 
   <div id="popupFooter"></div>
@@ -839,7 +905,7 @@
       <span class="targetsLoadingText"></span>
       <button type="button" class="loadAllBtnTargets">Load all</button>
     </div>
-    <span class="targetsFooterHint">Includes items no longer on this page. Drag ⠿ to arrange; right-click a saved item to add a target.</span>
+    <span class="targetsFooterHint">Includes items no longer on this page. Click a target to edit it, drag ⠿ to arrange; right-click a saved item to add a target.</span>
   </div>
 
   <div id="ctxMenu" role="menu"></div>

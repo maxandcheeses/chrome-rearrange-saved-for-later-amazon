@@ -13,7 +13,10 @@
 // the `updatedAt` of the save it belongs to, so a reader on another computer
 // can tell when chunks from a newer save are still arriving.
 
-const SYNC_FLAG_KEY = 'sfl_sync'; // local only, per computer: { enabled, enabledAt }
+// Local only, per computer: { enabled, enabledAt, joined } — enabled is
+// automatic sync; joined means this computer has synced before, so a manual
+// Sync now needn't ask which copy to keep.
+const SYNC_FLAG_KEY = 'sfl_sync';
 const SYNC_STATUS_KEY = 'sfl_sync_status'; // local only: { error, at, notice } from the last sync attempt
 // Sync only: { at }, left behind when the synced data is deleted, so other
 // computers with sync on turn it off rather than upload their copy again.

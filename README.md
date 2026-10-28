@@ -68,7 +68,7 @@ An item can have several labels. Use the filter dropdown to show only items
 with a given label — reordering while filtered still moves items within
 your full list, and **Apply order** always applies the whole list. Turn on
 "Show interposing items" to also see, dimmed, the unlabeled items sitting
-between your filtered ones.
+between your filtered ones (the button only appears when there are some).
 
 The filter dropdown also has **＋ New label…** and **✎ Edit labels…**. The
 editor renames, recolors, reorders, and deletes labels — click **Done** to
@@ -119,7 +119,7 @@ for later, with one row per target — including items no longer in your
 list (dimmed, with the last price seen). Each row shows the target's label,
 the item's other labels, the target, the current price, and how far off it
 is ("$4.50 above target" in red, "$1.01 under target" in green). Drag rows
-(⠿) to arrange them; right-click a row to edit or delete the target, add
+(⠿) to arrange them; click a row to edit its target, or right-click it to edit or delete the target, add
 another, or open the product page or its camelcamelcamel history. Its
 filter dropdown shows targets by status (in range, not in range, not on the
 page, notifications off) or by label, and its **＋ New label…** creates a
@@ -143,27 +143,30 @@ Amazon storefront shows.
 Click the ⚙ button to adjust:
 - **Theme** — Auto (follows your system's light/dark setting), Light or
   Dark.
-- **Delay between actions** — how long to wait between each bump step.
+- **Delay between actions** — how long to wait between each bump step
+  (default 500 ms; going lower isn't recommended).
   Increase this if Amazon's page feels slow to respond and items get
   missed or duplicated.
 - **Refresh the page after applying the order** — reloads the page once
   reordering finishes, so you see the final result immediately.
-- **Sync settings, labels and price targets across your computers** — off
-  by default. When on, your settings, labels and price targets are kept in
-  sync through your own
+- **Sync across computers → Sync automatically** — off by default. When on, your settings, labels and price
+  targets are kept in sync through your own
   Chrome account, on every computer where you're signed into Chrome with
   extension sync enabled and have this turned on. Nothing goes to the
   developer or anyone else. If both this computer and your Chrome account
-  already have different labels or price targets when you turn it on,
-  you'll be asked which to keep; after that, the most recent change wins.
+  already have different labels or price targets the first time you sync
+  (turning this on, or Sync now), you'll be asked which to keep; after that,
+  the most recent change wins.
   Chrome limits synced data to 100 KB — room for a few thousand labeled
   items, or a few hundred price targets (each remembers its item's title
   and link; thumbnails aren't synced and reappear once the item is seen
   on the cart page). Past that, everything keeps working on each computer
   but stops syncing. Your in-progress
-  arrangement is never synced. While sync is on, the popup's header shows
-  when it last synced (or that it failed); click it to open these settings.
-  - **Sync now** syncs right away instead of waiting for the next change.
+  arrangement is never synced. While automatic sync is on, the popup's
+  header shows when it last synced (or that it failed); click it to open
+  these settings. Settings always shows the last sync.
+  - **Sync now** syncs right away. It works with automatic sync off too, if
+    you'd rather sync only when you choose.
   - **Delete synced data…** removes your settings, labels and price targets from your
     Chrome account and turns sync off on all your computers. Each computer
     keeps its own copy, and you can turn sync back on later.

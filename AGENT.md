@@ -77,8 +77,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   `pendingOrder`: labels are user-curated data meant to persist, not a
   transient pending action. "Show interposing items" (the toggle next to
   the filter) additionally shows, dimmed, the non-matching items between
-  the first and last match; it's display-only and resets whenever the
-  filter changes. While filtered, `#list` keeps the height it last had
+  the first and last match; it's display-only, resets whenever the
+  filter changes, and is hidden (and switched off) while there are no such
+  items (`hasInterposingItems`). While filtered, `#list` keeps the height it last had
   unfiltered (`holdListHeight`), so the popup doesn't shrink to fit a few
   matches. The label editor ("Edit labels…") is transactional:
   `labelEditBefore` holds the state from when it opened, edits preview
@@ -132,6 +133,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
   - Price targets tab (`renderPriceTargets`, called from `renderList`): one
     row per target, shown only while a rule exists (`#tabBar` and its grid
     copy `#tabBarModal`); `body.tab-targets` hides the saved-list UI.
+    Clicking a row (outside its title link) opens `openPriceRuleDialog`
+    for it.
     "On the page" = in `order`, so not-yet-lazy-loaded items count as
     off-page — hence the footer's own Load all banner. Rows are in the
     user's order (drag; `moveTarget`), kept as `rank` on each rule so it
@@ -182,16 +185,22 @@ Chrome sync account. Keep any privacy wording consistent with that.
   (stamped by `saveSettings`/`saveLabels`), debounced to respect sync's
   write limits. Labels are split into ≤7 KB chunks in sync (8 KB per-item
   quota); each chunk carries its save's `updatedAt` so half-arrived saves
-  are ignored. Turning sync on with differing labels on both sides asks
-  which to keep. Sync errors (quota) land in `sfl_sync_status` and show
-  under the toggle, along with the last sync time — also shown, while
-  sync is on, as a `.syncBadge` in both views' headers
-  (`renderSyncBadges`, fed by `renderSyncStatus`; click opens settings). "Sync now" sends
-  `SFL_SYNC_NOW` and waits for the reconcile's result. "Delete synced
-  data…" turns sync off here, then `deleteSynced` writes an
-  `sfl_sync_deleted` marker *before* removing the rest. Any computer whose
-  sync was enabled (`enabledAt` in the flag) before that marker turns its
-  own sync off in `reconcile` instead of uploading its copy again.
+  are ignored. The checkbox is *automatic* sync (`enabled` in the flag);
+  "Sync now" works with it off too, sending `SFL_SYNC_NOW` with
+  `manual: true` so `reconcile` runs regardless, and waits for the result.
+  The first time a computer syncs (turning automatic sync on, or a Sync
+  now while not `joined`), differing labels on both sides ask which to
+  keep (`settleSyncConflict`); after that `joined` is set and newer wins.
+  Sync errors (quota) land in `sfl_sync_status` and show under the toggle,
+  along with the last sync time ("Not synced yet" before any) — also
+  shown, while automatic sync is on, as a `.syncBadge` in both views'
+  headers (`renderSyncBadges`, fed by `renderSyncStatus`; click opens
+  settings). "Delete synced data…" turns sync off here (and clears
+  `joined`), then `deleteSynced` writes an `sfl_sync_deleted` marker
+  *before* removing the rest. Any computer whose automatic sync was
+  enabled (`enabledAt` in the flag) before that marker turns it off in
+  `reconcile` instead of uploading its copy again; a manual sync uploads
+  anyway and moves `enabledAt` past the marker.
   `storage.js` is loaded by both popup.html and
   `importScripts` in the worker, so it must not redeclare popup.js
   globals, and it must be in the build zip.
@@ -230,8 +239,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   the page reloads (`restoreLastTab`, once per popup opening).
   `SFL_SET_VIEW_STATE` / `SFL_GET_VIEW_STATE` do the same for the rest of
   the popup's view ("View memory" in `popup.js`): label/target filters and
-  "Show interposing items", the selection, grid vs compact view, undo/redo
-  history, and scroll positions (each scroller in `SCROLLER_IDS`). The
+  "Show interposing items", the selection, undo/redo history, and scroll
+  positions — not which view is open: the popup always opens in the
+  Default view setting, and the expand / collapse buttons (`.viewSwitchBtn`) only switch until it closes (each scroller in `SCROLLER_IDS`). The
   popup saves each part as it changes (`saveViewState`; a popup can't
   save on close, and scrolling is debounced) and `restoreViewState` puts
   them back before the last tab, once per opening. Nothing is saved until
