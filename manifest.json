@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Reorder Saved for Later - Amazon",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Drag and drop to reorder your Amazon Saved for Later list. Nothing is collected or shared; optional sync uses your Chrome account.",
   "permissions": ["storage"],
   "background": {
