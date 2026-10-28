@@ -17,6 +17,10 @@ price targets in your own Chrome account (see [Settings](#settings)).
 | --- | --- |
 | ![Popup idle state](screenshots/popup.png) | ![Popup mid-reorder, with Cancel button](screenshots/popup-reorder-in-progress.png) |
 
+| Label filter | Price targets |
+| --- | --- |
+| ![Filtering the list by a label](screenshots/popup-label-filter.png) | ![Price targets tab](screenshots/popup-price-targets.png) |
+
 ## Why
 
 Amazon has no way to reorder saved-for-later items — new saves always land

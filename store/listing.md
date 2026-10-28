@@ -54,10 +54,11 @@ Free and open source: github.com/maxandcheeses/chrome-reorder-saved-for-later-am
 
 ### Screenshots
 
-The current store screenshots (`screenshots/store-screenshot-*.png`)
-predate labels, undo/redo, sync and price targets. Regenerate them
-(screenshot-generator agent) and upload, ideally including one showing
-labels on items with the filter in use, and one of the Price targets tab.
+The current store screenshots (`screenshots/store-screenshot-*.png`,
+1280x800) show the reorder list with labels, applying an order with
+progress, the Price targets tab with a target that has been hit, and the
+list filtered to one label. Regenerate with the screenshot-generator agent
+whenever the popup UI changes.
 
 ---
 
