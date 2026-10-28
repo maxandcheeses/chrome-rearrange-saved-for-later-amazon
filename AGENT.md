@@ -230,7 +230,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   debounces a `SFL_ESTIMATE_ORDER` call and shows "~Ns to apply" under the
   Apply button; once Apply is clicked, `pollStatus` takes over and shows
   the live "~Ns remaining" countdown instead, clearing back to nothing
-  when done. Also holds the in-memory `pendingOrder` — the
+  when done. While it runs, `setCancelVisible` also sets `body.applying`,
+  which shows a "don't leave or reload the Amazon page" warning
+  (`#applyWarning`, `#modalApplyWarning` in the Extended view footer). Also holds the in-memory `pendingOrder` — the
   not-yet-applied manual reorder — deliberately kept here instead of
   `chrome.storage.local`: this script is destroyed and re-injected fresh on
   every page reload/navigation/tab close, so `pendingOrder` resets to

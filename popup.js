@@ -2996,10 +2996,12 @@ function setControlsDisabled(disabled) {
 
 // Shows the Cancel button (which halts an in-progress reorder) only while
 // one is running. There's no Refresh: the open popup rescans on its own.
+// Also shows the "don't leave the page" warning (body.applying) alongside it.
 function setCancelVisible(visible) {
   const btn = $('cancelBtn');
   btn.hidden = !visible;
   btn.disabled = false;
+  document.body.classList.toggle('applying', visible);
 }
 
 let cancelRequested = false;

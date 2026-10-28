@@ -223,6 +223,15 @@
   .targetsLoadingText { display: none; font-weight: 600; color: var(--text); }
   body.msg-loading .targetsLoadingText { display: inline; }
   body.msg-loading .targetsLoadText, body.msg-loading .loadAllBtnTargets { display: none; }
+  /* Shown only while a reorder is being applied (body.applying): leaving or
+     reloading the Amazon page stops content.js mid-reorder. */
+  #applyWarning, #modalApplyWarning {
+    display: none; border: 1px solid var(--warn-border); border-radius: 8px; padding: 2px 8px;
+    background: var(--warn-bg); color: var(--warn-text); font-size: 11px; text-align: center;
+  }
+  #applyWarning { margin-top: 4px; }
+  #modalApplyWarning { flex-basis: 100%; box-sizing: border-box; }
+  body.applying #applyWarning, body.applying #modalApplyWarning { display: block; }
   #incompleteBanner button, .targetsLoadBanner button, #modalIncompleteBanner button {
     flex-shrink: 0; padding: 1px 8px; font-size: 10.5px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 16px; box-shadow: none; color: var(--text);
@@ -810,6 +819,7 @@
       <span class="targetsFooterHint">Includes items no longer on this page. Click a target to edit it, drag ⠿ to arrange; right-click a saved item to add a target.</span>
     </div>
     <div id="gridModalFooter">
+      <div id="modalApplyWarning" role="status">⚠ Don't leave or reload the Amazon page until this finishes.</div>
       <div id="modalIncompleteBanner">
         <span title="Amazon loads Saved for later in batches as you scroll down the cart. Load all scrolls the page for you to load the rest.">⚠ More items may not have loaded yet.</span>
         <button id="loadAllBtnModal">Load all</button>
@@ -839,6 +849,7 @@
       <span id="applyBtnSub"></span>
     </button>
   </div>
+  <div id="applyWarning" role="status">⚠ Don't leave or reload the Amazon page until this finishes.</div>
   <div id="incompleteBanner">
     <span title="Amazon loads Saved for later in batches as you scroll down the cart. Load all scrolls the page for you to load the rest.">⚠ More items may not have loaded yet.</span>
     <button id="loadAllBtnInline">Load all</button>
