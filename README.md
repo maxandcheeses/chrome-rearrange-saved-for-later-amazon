@@ -48,8 +48,9 @@ cart" / "Save for later" controls to bump items into the position you want.
    you do that manually too.
 7. Use the undo/redo buttons (or ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y) to step
    back and forth through your changes before applying.
-8. Shift+click several items to select them, then drag any one of them to
-   move the whole group together.
+8. Select several items — ⌘+click (Ctrl+click on Windows/Linux) to pick
+   them one at a time, Shift+click to select a range — then drag any one
+   of them to move the whole group together.
 
 The toolbar icon is greyed out except on Amazon cart pages, where the
 extension can actually do something.

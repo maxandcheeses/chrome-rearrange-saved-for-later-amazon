@@ -30,7 +30,7 @@ Open it on your Amazon cart page, drag items into the order you want (or type a 
 FEATURES
 • Drag and drop, or type a position number to jump an item straight to that spot
 • Compact view, or an extended grid/table view for long lists
-• Select several items with Shift+click and drag them together
+• Select several items (⌘/Ctrl+click, or Shift+click for a range) and drag them together
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
 • Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Reordering while filtered still keeps your whole list in order.
 • Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. A Price targets tab lists every target with how far each price is from it (checked while the popup is open on your cart)

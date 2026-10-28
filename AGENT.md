@@ -155,8 +155,11 @@ Chrome sync account. Keep any privacy wording consistent with that.
   only, and cleared after a successful Apply since the page's real order
   has moved on. `restoreState` reconciles against the items currently
   loaded: unknown items keep their place at the end, vanished ones drop.
-- Multi-select (`popup.js`, "Multi-select" section) — Shift+click toggles
-  items into a selection; dragging any selected item moves the whole
+- Multi-select (`popup.js`, "Multi-select" section) — platform-standard
+  clicks: ⌘+click (Mac) / Ctrl+click (Windows, Linux) toggles an item,
+  Shift+click selects the range from the anchor (⌘/Ctrl+Shift adds it to
+  the selection), plain click highlights just that item, and a click on
+  empty list space or Escape clears it; dragging any selected item moves the whole
   selection as one block. Display-only, never persisted, and pruned when
   the label filter hides selected items.
 - Custom tooltips (`setupTooltips`) replace Chrome's slow native ones for

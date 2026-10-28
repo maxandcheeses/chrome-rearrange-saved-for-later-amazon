@@ -51,9 +51,13 @@ let labelEditBefore = null;
 // updatedAt of the settings/labels this popup last loaded or saved, to tell
 // its own writes apart from ones that came in through sync while it's open.
 const seenUpdatedAt = { settings: undefined, labels: undefined };
-// Items picked with Shift+click. Dragging any of them moves them all as one
-// block (see moveKeysTo). Display-only state — never persisted.
+// Items picked with ⌘/Ctrl+click or Shift+click. Dragging any of them moves
+// them all as one block (see moveKeysTo). Display-only state — never persisted.
 let selectedKeys = new Set();
+// The item Shift+click ranges extend from: the last item plain- or
+// ⌘/Ctrl+clicked, as in Finder / Explorer.
+let selectionAnchor = null;
+const IS_MAC = /Mac/i.test(navigator.platform);
 // "Show interposing items": while filtered, also show (dimmed) the
 // non-matching items sitting between the first and last match, for context
 // when reordering. Deliberately not persisted, and reset whenever the
@@ -89,9 +93,9 @@ function makeTitleEl(item, key) {
     // Don't let clicking the link kick off a drag on the parent row.
     el.addEventListener('mousedown', (e) => e.stopPropagation());
     el.addEventListener('click', (e) => {
-      // Shift+click selects the row (handled by the row's own listener)
-      // rather than opening the product.
-      if (e.shiftKey) { e.preventDefault(); return; }
+      // Shift or ⌘/Ctrl+click selects the row (handled by the row's own
+      // listener) rather than opening the product.
+      if (e.shiftKey || isToggleClick(e)) { e.preventDefault(); return; }
       e.stopPropagation();
       // A normal target="_blank" navigation opens a focused foreground tab,
       // which steals window focus and causes Chrome to auto-close this
@@ -2221,20 +2225,54 @@ function autoScrollContainerOnDragover(container, clientY) {
   }
 }
 
-// ---- Multi-select (Shift+click) ----
+// ---- Multi-select (platform-standard clicks) ----
+// ⌘+click (macOS) / Ctrl+click (Windows, Linux) toggles one item; Shift+click
+// selects the contiguous range from the anchor, replacing the selection;
+// adding ⌘/Ctrl to Shift+click adds the range to the selection instead.
+// A plain click highlights just that item; clicking empty space in the list
+// or Escape clears it.
+
+// Ctrl+click on macOS is a right-click, so only ⌘ toggles there.
+function isToggleClick(e) {
+  return IS_MAC ? e.metaKey : e.ctrlKey;
+}
 
 function setupSelectable(li, key) {
   if (selectedKeys.has(key)) li.classList.add('selected');
   li.addEventListener('click', (e) => {
     if (e.target.closest('input, button')) return;
-    if (e.shiftKey) toggleSelected(key);
-    else if (selectedKeys.size) clearSelection();
+    if (e.shiftKey) selectRange(li, key, isToggleClick(e));
+    else if (isToggleClick(e)) toggleSelected(key);
+    else selectOnly(key);
   });
+}
+
+function selectOnly(key) {
+  selectedKeys.clear();
+  selectedKeys.add(key);
+  selectionAnchor = key;
+  renderSelection();
 }
 
 function toggleSelected(key) {
   if (selectedKeys.has(key)) selectedKeys.delete(key);
   else selectedKeys.add(key);
+  selectionAnchor = key;
+  renderSelection();
+}
+
+// Selects every item shown between the anchor and `key` (inclusive), in the
+// view `li` belongs to. Without an anchor still on screen, just `key`.
+function selectRange(li, key, additive) {
+  const keys = [...li.parentElement.querySelectorAll(':scope > li[data-key]')].map((el) => el.dataset.key);
+  const to = keys.indexOf(key);
+  let from = keys.indexOf(selectionAnchor);
+  if (from === -1) {
+    from = to;
+    selectionAnchor = key;
+  }
+  if (!additive) selectedKeys.clear();
+  keys.slice(Math.min(from, to), Math.max(from, to) + 1).forEach((k) => selectedKeys.add(k));
   renderSelection();
 }
 
@@ -3045,7 +3083,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
     else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
   });
-  const mod = /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl+';
+  const mod = IS_MAC ? '⌘' : 'Ctrl+';
   ['undoBtn', 'undoBtnModal'].forEach((id) => { $(id).title = `Undo (${mod}Z)`; });
   ['redoBtn', 'redoBtnModal'].forEach((id) => { $(id).title = mod === '⌘' ? 'Redo (⇧⌘Z)' : 'Redo (Ctrl+Y)'; });
   $('resetBtn').addEventListener('click', resetOrder);
@@ -3074,6 +3112,10 @@ document.addEventListener('DOMContentLoaded', () => {
     closeContextMenu();
     dismissDialog();
     if (!overlayOpen) clearSelection();
+  });
+  // Clicking empty space in the list (not on an item) clears the selection.
+  ['list', 'tileGrid'].forEach((id) => {
+    $(id).addEventListener('click', (e) => { if (e.target === e.currentTarget) clearSelection(); });
   });
   $('delay').addEventListener('change', saveSettings);
   $('reloadAfterApply').addEventListener('change', saveSettings);
