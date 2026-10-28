@@ -186,7 +186,16 @@ Chrome sync account. Keep any privacy wording consistent with that.
   (stamped by `saveSettings`/`saveLabels`), debounced to respect sync's
   write limits. Labels are split into ≤7 KB chunks in sync (8 KB per-item
   quota); each chunk carries its save's `updatedAt` so half-arrived saves
-  are ignored. The checkbox is *automatic* sync (`enabled` in the flag);
+  are ignored. Timestamps are each computer's own clock (`Date.now()`), so
+  a computer whose clock runs fast wins ties it shouldn't. `reconcile`
+  re-reads the local copy just before writing the synced one in and skips
+  any key saved meanwhile, so a sync can't overwrite an edit made during
+  it. In the popup, synced labels arriving mid-edit set
+  `labelsChangedElsewhere`: discarding the editor then loads them rather
+  than saving the old snapshot over them (Done still wins, as the newest
+  save), and any synced labels arriving clear undo/redo, whose snapshots
+  would put the old labels back.
+  The checkbox is *automatic* sync (`enabled` in the flag);
   "Sync now" works with it off too, sending `SFL_SYNC_NOW` with
   `manual: true` so `reconcile` runs regardless, and waits for the result.
   The first time a computer syncs (turning automatic sync on, or a Sync
@@ -249,7 +258,16 @@ Chrome sync account. Keep any privacy wording consistent with that.
   that restore has run, so start-up rendering can't overwrite it. Labels
   deleted or items gone since are dropped on restore. A scroller hidden at
   restore (the grid in compact view, a tab not shown) keeps its position
-  in `pendingScroll` until `setGridMode`/`setActiveTab` shows it. Settings
+  in `pendingScroll` until `setGridMode`/`setActiveTab` shows it. A position
+  also stays pending until it's actually reached (the list may still be
+  short while items arrive), retried after each `renderList` for
+  `SCROLL_RESTORE_WINDOW_MS`; a scroll event that lands at the bottom
+  while a position is pending is a short-list clamp, not saved. Only the
+  showing view's scrollers (`COMPACT_SCROLLERS` / `GRID_SCROLLERS`) save,
+  since the other's only move from layout (hiding the grid resets it; the
+  compact content reflows behind the grid), and `restoreViewScroll` puts
+  the shown view's positions back on every `setGridMode` and `setActiveTab`
+  (a hidden list never saves: hiding resets its scroll). Settings
   that should outlast a reload (tile size, table view, default view,
   theme) stay in `sfl_settings` instead.
   `SFL_DELETE_ITEM` (from the item right-click menu, `openItemMenu` in
@@ -258,7 +276,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   short phrases like "sil" appear in product titles) and waits for the
   row to vanish. It's permanent on Amazon, so it's confirmed first and
   sits outside undo/redo; the popup just rescans and `mergeItems` drops
-  the key.
+  the key. `deleteRunning` keeps a delete and a reorder (or two deletes)
+  from driving the page at once, and `SFL_APPLY_ORDER` replies
+  `{ started: false, error }` instead of starting a second reorder.
   `SFL_ADD_TO_CART` (item menu, "Add to cart (keep in Saved for later)",
   `addSavedItemToCart` in both files) puts an item in the cart *without*
   "Move to cart", which would take it out of Saved for later: it fetches

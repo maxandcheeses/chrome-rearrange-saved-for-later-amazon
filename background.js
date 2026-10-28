@@ -86,7 +86,18 @@ async function reconcile(manual = false) {
       if (rt > lt) toLocal[SYNCED_KEYS[name]] = name === 'labels' ? withLocalRuleFields(r, l) : r;
       else if (lt > rt) await writeSynced(name, l);
     }
-    if (Object.keys(toLocal).length) await chrome.storage.local.set(toLocal);
+    // A save made here since the read above is newer than what's being
+    // copied in, so keep it (its own change schedules the next sync).
+    const keys = Object.keys(toLocal);
+    if (keys.length) {
+      const now = await chrome.storage.local.get(keys);
+      keys.forEach((k) => {
+        const was = local[k] ? local[k].updatedAt : undefined;
+        const is = now[k] ? now[k].updatedAt : undefined;
+        if (is !== was) delete toLocal[k];
+      });
+      if (Object.keys(toLocal).length) await chrome.storage.local.set(toLocal);
+    }
   } catch (e) {
     status = { error: String((e && e.message) || e) };
   }

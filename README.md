@@ -53,7 +53,8 @@ To run it from source instead:
    resets it back to the page's real order, and the **Reset** button lets
    you do that manually too.
 7. Use the undo/redo buttons (or ⌘Z / Ctrl+Z and ⇧⌘Z / Ctrl+Y) to step
-   back and forth through your changes before applying.
+   back and forth through your changes before applying. (The history
+   starts over when labels sync in from another computer.)
 8. Select several items — ⌘+click (Ctrl+click on Windows/Linux) to pick
    them one at a time, Shift+click to select a range — then drag any one
    of them to move the whole group together.

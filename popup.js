@@ -188,6 +188,7 @@ function renderList() {
   attachDragHandlers();
   renderTileGrid();
   renderPriceTargets();
+  applyPendingScroll(); // items may have arrived that a restore was waiting on
 }
 
 // The list sizes to its items, so filtering down to a few would shrink the
@@ -487,6 +488,7 @@ function setGridMode(on) {
   document.body.classList.toggle('grid-mode', on);
   matchTargetsFooterHeight();
   applyPendingScroll();
+  restoreViewScroll();
 }
 
 // Chrome caps popups at 800x600 screen pixels, so at a page zoom above 100%
@@ -764,16 +766,31 @@ function commitLabelChange() {
   renderList();
 }
 
+// Set when synced labels arrive while the label editor is open.
+let labelsChangedElsewhere = false;
+
+// Done: the editor's labels are saved as the newest copy, so they win over
+// anything synced in meanwhile (last change wins, as everywhere in sync).
 function finishLabelEdit() {
   if (!labelEditBefore) return;
   const before = labelEditBefore;
   labelEditBefore = null;
+  labelsChangedElsewhere = false;
   recordChange(before);
   saveLabels();
 }
 
 function discardLabelEdit() {
   if (!labelEditBefore) return;
+  if (labelsChangedElsewhere) {
+    // Restoring (and saving) the pre-edit snapshot would overwrite what
+    // arrived; load the current labels instead.
+    labelEditBefore = null;
+    labelsChangedElsewhere = false;
+    clearHistory();
+    loadLabels().then(renderList);
+    return;
+  }
   labels = labelEditBefore.labels.map((l) => ({ ...l }));
   labelsOf = new Map(labelEditBefore.labelsOf.map(([key, ids]) => [key, new Set(ids)]));
   restorePriceRules(labelEditBefore);
@@ -1652,6 +1669,7 @@ function setActiveTab(tab) {
     list.style.height = `${Math.max(60, list.offsetHeight + height - document.body.scrollHeight)}px`;
   }
   applyPendingScroll();
+  restoreViewScroll();
 }
 
 function appendFilterEmptyNote(container) {
@@ -2328,6 +2346,18 @@ async function restoreLastTab(tabId) {
 }
 
 // ---- View memory ----
+// Switching views or tabs puts back the positions saved for what's shown,
+// since hiding a list (the grid, the other tab's list) resets its scroll
+// and the compact content's height changes while the grid is in front.
+// Again once the popup has resized.
+function restoreViewScroll() {
+  const apply = () => (gridMode ? GRID_SCROLLERS : COMPACT_SCROLLERS).forEach((id) => {
+    if (id in savedScroll) scrollerEl(id).scrollTop = savedScroll[id];
+  });
+  apply();
+  setTimeout(apply, 300);
+}
+
 // The popup's view — filters, selection, undo/redo history and scroll
 // positions — is remembered by the page (until it reloads), like the
 // last tab, and restored once per popup opening (restoreLastTab). Not which
@@ -2338,7 +2368,9 @@ async function restoreLastTab(tabId) {
 // A scroller that's hidden at restore (e.g. the grid while in the compact
 // view) can't be scrolled, so its position waits in pendingScroll until
 // setGridMode/setActiveTab shows it.
-const SCROLLER_IDS = ['body', 'list', 'tileGrid', 'targetsList', 'targetsPanelModal'];
+const COMPACT_SCROLLERS = ['body', 'list', 'targetsList'];
+const GRID_SCROLLERS = ['tileGrid', 'targetsPanelModal'];
+const SCROLLER_IDS = [...COMPACT_SCROLLERS, ...GRID_SCROLLERS];
 let viewRestored = false;
 let savedScroll = {};
 let pendingScroll = {};
@@ -2390,6 +2422,7 @@ async function restoreViewState(tabId) {
   updateHistoryButtons();
   savedScroll = { ...(state.scroll || {}) };
   pendingScroll = { ...savedScroll };
+  scrollRestoreUntil = Date.now() + SCROLL_RESTORE_WINDOW_MS;
   viewRestored = true;
 }
 
@@ -2397,12 +2430,20 @@ function scrollerEl(id) {
   return id === 'body' ? document.body : $(id);
 }
 
+// A position stays pending until it's actually reached: if the list isn't
+// long enough yet (items still arriving), the browser stops short, so it's
+// tried again as content changes (renderList, view switches), for up to
+// SCROLL_RESTORE_WINDOW_MS after the popup opens.
+const SCROLL_RESTORE_WINDOW_MS = 5000;
+let scrollRestoreUntil = 0;
+
 function applyPendingScroll() {
+  if (Date.now() > scrollRestoreUntil) { pendingScroll = {}; return; }
   Object.keys(pendingScroll).forEach((id) => {
     const el = scrollerEl(id);
     if (!el || !el.clientHeight) return;
     el.scrollTop = pendingScroll[id];
-    delete pendingScroll[id];
+    if (Math.abs(el.scrollTop - pendingScroll[id]) <= 1) delete pendingScroll[id];
   });
 }
 
@@ -2411,6 +2452,14 @@ function setupScrollMemory() {
     const el = scrollerEl(id);
     el.addEventListener('scroll', () => {
       if (!viewRestored) return;
+      // The view or tab that isn't showing only scrolls because of layout
+      // (the compact content reflowing behind the wider grid, a list reset
+      // by being hidden), never by the user, so its position isn't saved.
+      if ((gridMode ? COMPACT_SCROLLERS : GRID_SCROLLERS).includes(id)) return;
+      if (el !== document.body && !el.getClientRects().length) return;
+      // A restore the list was too short for lands at the bottom; that's
+      // not where the user was, so keep the remembered position.
+      if (id in pendingScroll && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return;
       delete pendingScroll[id];
       savedScroll[id] = el.scrollTop;
       clearTimeout(scrollSaveTimer);
@@ -2969,7 +3018,12 @@ async function cancelApply() {
 }
 
 async function applyOrder() {
-  if (!activeTabId) return;
+  if (!activeTabId || applyInProgress) return;
+  // A delete drives Amazon's page too; the two mustn't run at once.
+  if (deletingKey || addingToCartKey) {
+    setStatus(`Wait for the ${deletingKey ? 'delete' : 'add to cart'} to finish, then apply.`, true);
+    return;
+  }
   applyInProgress = true;
   cancelRequested = false;
   $('applyBtn').disabled = true;
@@ -2977,10 +3031,15 @@ async function applyOrder() {
   setControlsDisabled(true);
   setCancelVisible(true);
   setStatus('Starting…');
+  let error = null;
   try {
-    await sendToTab(activeTabId, { type: 'SFL_APPLY_ORDER', order });
+    const res = await sendToTab(activeTabId, { type: 'SFL_APPLY_ORDER', order });
+    if (res && res.started === false) error = res.error || 'The page refused to start the reorder.';
   } catch (err) {
-    setStatus(`Could not reach the page: ${err.message}`, true);
+    error = `Could not reach the page: ${err.message}`;
+  }
+  if (error) {
+    setStatus(error, true);
     setApplyBtnSub('');
     applyInProgress = false;
     updateApplyButton();
@@ -3347,8 +3406,17 @@ function setupSync() {
     const settings = changes[STORAGE_KEY] && changes[STORAGE_KEY].newValue;
     if (settings && settings.updatedAt !== seenUpdatedAt.settings) loadSettings();
     const saved = changes[LABELS_STORAGE_KEY] && changes[LABELS_STORAGE_KEY].newValue;
-    // Not mid-edit: the label editor's session would be built on stale state.
-    if (saved && saved.updatedAt !== seenUpdatedAt.labels && !labelEditBefore) loadLabels().then(renderList);
+    // Not mid-edit: the label editor's session would be built on stale state
+    // (discardLabelEdit loads them instead). Undo steps from before would
+    // put the old labels back over the synced ones, so they're dropped.
+    if (saved && saved.updatedAt !== seenUpdatedAt.labels) {
+      if (labelEditBefore) {
+        labelsChangedElsewhere = true;
+      } else {
+        clearHistory();
+        loadLabels().then(renderList);
+      }
+    }
   });
 }
 

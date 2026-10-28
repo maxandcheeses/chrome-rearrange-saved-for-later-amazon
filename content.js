@@ -46,6 +46,10 @@
   // mid-DOM-manipulation (which could strand an item in the cart).
   let cancelRequested = false;
 
+  // True while SFL_DELETE_ITEM is clicking through Amazon's page, so a
+  // reorder (or another delete) doesn't drive the page at the same time.
+  let deleteRunning = false;
+
   // Broad selector for anything that could be a clickable action control —
   // Amazon mixes <a>, <button>, and <input type="submit"> across pages/locales.
   const ACTION_SELECTOR = 'a, button, input[type="submit"], input[type="button"], [role="button"]';
@@ -842,16 +846,19 @@
     }
 
     if (msg.type === 'SFL_DELETE_ITEM') {
-      if (status.running) {
-        sendResponse({ ok: false, error: 'A reorder is in progress.' });
+      if (status.running || deleteRunning) {
+        sendResponse({ ok: false, error: status.running ? 'A reorder is in progress.' : 'Another delete is still running.' });
         return;
       }
+      deleteRunning = true;
       (async () => {
         try {
           await deleteSavedItem(msg.key);
           sendResponse({ ok: true });
         } catch (err) {
           sendResponse({ ok: false, error: err.message });
+        } finally {
+          deleteRunning = false;
         }
       })();
       return true;
@@ -897,6 +904,12 @@
     }
 
     if (msg.type === 'SFL_APPLY_ORDER') {
+      // Checked here, before pendingOrder is dropped, rather than only in
+      // applyOrder (whose rejection nothing would catch).
+      if (status.running || deleteRunning) {
+        sendResponse({ started: false, error: status.running ? 'A reorder is already running.' : 'Wait for the delete to finish.' });
+        return;
+      }
       pendingOrder = null;
       applyOrder(msg.order || []);
       sendResponse({ started: true });
