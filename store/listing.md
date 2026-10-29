@@ -13,6 +13,12 @@ Keep this file in sync with the shipped features, like README.md.
 
 ## Store listing tab
 
+### Item name
+
+Comes from `manifest.json` `name`, not the dashboard:
+
+> Rearrange Saved for Later - Amazon
+
 ### Summary
 
 Comes from `manifest.json` `description` (132-character limit), not the
@@ -44,7 +50,7 @@ PRIVACY
 Nothing is ever collected, sold, or sent to the developer or anyone else. Everything runs and is stored locally in your browser. If you turn on sync, your settings, labels and price targets are also stored in your own Chrome account through Chrome's built-in sync — and nowhere else.
 
 GOOD TO KNOW
-• Applying an order works by moving items to your cart and back, so it takes a few seconds per item moved.
+• Applying an order works by moving items to your cart and back, so it takes a few seconds per item moved. Keep the Amazon cart page open until it finishes — leaving or reloading it stops partway.
 • Items Amazon marks as unavailable can't be moved, so they're skipped and stay where they are.
 • Price targets only check prices while the popup is open on your cart, and only for items still in your Saved for later list — there's no background price tracking.
 • Works on Amazon storefronts in many countries. If Amazon changes its cart page, item detection may need an update.
@@ -52,13 +58,33 @@ GOOD TO KNOW
 Free and open source: github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon
 ```
 
-### Screenshots
+### Category and language
 
-The current store screenshots (`screenshots/store-screenshot-*.png`,
-1280x800) show the rearrange list with labels, applying an order with
-progress, the Price targets tab with a target that has been hit, and the
-list filtered to one label. Regenerate with the screenshot-generator agent
-whenever the popup UI changes.
+- **Category:** Shopping
+- **Language:** English
+
+### Graphic assets
+
+| Field | File | Size |
+| --- | --- | --- |
+| Store icon | `icons/icon128.png` | 128x128 |
+| Screenshot 1 | `screenshots/store-screenshot-1.png` (rearranging the list, with labels) | 1280x800 |
+| Screenshot 2 | `screenshots/store-screenshot-2.png` (applying an order, with progress) | 1280x800 |
+| Screenshot 3 | `screenshots/store-screenshot-3.png` (Price targets tab, one target hit) | 1280x800 |
+| Screenshot 4 | `screenshots/store-screenshot-4.png` (list filtered to one label) | 1280x800 |
+| Small promo tile | `screenshots/promo-tile-small.png` | 440x280 |
+| Marquee promo tile | `screenshots/promo-tile-marquee.png` | 1400x560 |
+| Promo video | none | |
+
+Regenerate the screenshots with the screenshot-generator agent whenever
+the popup UI changes.
+
+### Additional fields
+
+- **Official URL:** none
+- **Homepage URL:** https://github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon
+- **Support URL:** https://github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon/issues
+- **Mature content:** No
 
 ---
 
