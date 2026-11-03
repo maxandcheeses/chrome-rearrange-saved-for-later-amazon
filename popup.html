@@ -42,6 +42,12 @@
     transition: width 0.15s ease;
   }
   body.grid-mode { width: 800px; max-height: 600px; }
+  /* In Chrome's side panel (popup.js sets html.side-panel) the panel sets
+     the size: fill it instead of the popup's fixed width and 600px cap. */
+  html.side-panel { max-height: none; height: 100%; }
+  html.side-panel body, html.side-panel body.grid-mode { width: auto; max-height: none; height: 100%; }
+  .openPanelBtn[hidden], html.side-panel .openPanelBtn,
+  html.side-panel #closeGridBtn { display: none !important; }
   /* Lined up with the extended view's toolbar (#gridModalHeader: 6px from
      the top, 14px in from the sides, 13px title, full-width divider under
      it) so the title and buttons stay put when switching views. The
@@ -81,6 +87,12 @@
   }
   .tabBtn:hover { color: var(--text); }
   .tabBtn.active { color: var(--text); font-weight: 600; border-bottom-color: #e77600; }
+  /* "N in range" after the Price targets tab's name (renderPriceTargets). */
+  .tabHitCount {
+    display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; vertical-align: 1px;
+    background: var(--success-bg); border: 1px solid var(--success); color: var(--success);
+    font-size: 10px; font-weight: 600; line-height: 15px;
+  }
   .targetsPanel { display: none; }
   .targetsPanel .hint { font-size: 11px; color: var(--text-muted); margin: 0 0 6px; }
   body.tab-targets .targetsPanel { display: block; }
@@ -162,6 +174,18 @@
   #targetsListModal.table-view .target-main .title { display: block; flex: 1; min-width: 0; white-space: nowrap; text-overflow: ellipsis; }
   #targetsListModal.table-view .target-meta { flex-wrap: nowrap; flex-shrink: 0; }
   #targetsListModal.table-view .target-note { max-width: 160px; } /* leaves the title room */
+  /* The side panel is too narrow for title and details on one line (the
+     details pushed the title out entirely), so rows take two lines like the
+     compact list's: the title, then the details, each ending in "…" when
+     they don't fit (the range and notes give way first). */
+  html.side-panel #targetsListModal.table-view li { padding-top: 3px; padding-bottom: 3px; }
+  html.side-panel #targetsListModal.table-view .target-main { flex-direction: column; align-items: stretch; gap: 1px; }
+  html.side-panel #targetsListModal.table-view .target-meta { flex-shrink: 1; min-width: 0; overflow: hidden; }
+  html.side-panel #targetsListModal.table-view .target-meta > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 4; }
+  html.side-panel #targetsListModal.table-view .target-meta > .label-chip,
+  html.side-panel #targetsListModal.table-view .target-meta > .price-tag,
+  html.side-panel #targetsListModal.table-view .target-meta > .target-gap { flex-shrink: 0; }
+  html.side-panel #targetsListModal.table-view .target-note { max-width: none; }
   /* Both. */
   .targetsList li.filter-empty { justify-content: center; color: var(--text-muted); font-size: 12px; padding: 14px 8px; cursor: default; }
   .targetsList li[draggable="true"] { cursor: grab; user-select: none; }
@@ -183,6 +207,9 @@
     background: var(--success-bg); border: 1px solid var(--success); border-radius: 8px; font-size: 12px;
   }
   body.grid-mode #priceAlertsModal .price-alert { flex-direction: row; align-items: center; justify-content: space-between; }
+  /* The side panel leaves price target alerts to the page's own "Price
+     target hit" box (content.js), so it doesn't show them twice. */
+  html.side-panel #priceAlertsModal { display: none !important; }
   .price-alert-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .price-alert-text strong { color: var(--success); font-size: 11px; }
   .price-alert-text .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -300,12 +327,12 @@
     color: var(--text); box-shadow: none; border-radius: 999px;
   }
   #settingsBtnModal:hover { background: var(--btn-hover); }
-  #closeGridBtn {
+  #closeGridBtn, #openPanelBtnModal {
     width: 26px; height: 26px; padding: 0; flex-shrink: 0;
     background: var(--btn-bg); border: 1px solid var(--border); color: var(--text); box-shadow: none;
     border-radius: 999px; font-size: 13px; line-height: 1;
   }
-  #closeGridBtn:hover { background: var(--btn-hover); }
+  #closeGridBtn:hover, #openPanelBtnModal:hover { background: var(--btn-hover); }
   /* The Extended (expand) / Compact (collapse) switch buttons. */
   .viewSwitchBtn svg { display: block; width: 15px; height: 15px; margin: auto; fill: currentColor; }
   .settingsIconBtn svg { display: block; width: 15px; height: 15px; margin: auto; fill: currentColor; }
@@ -373,6 +400,12 @@
     border-top: 1px solid var(--divider); padding: 6px 14px; font-size: 11px; color: var(--text-muted);
   }
   #gridModalFooterMsgs { flex: 1; min-width: 0; }
+  /* The side panel is usually too narrow to share a row with the buttons
+     (the message would be squeezed into a thin column on the left), so the
+     message takes the footer's full width and the buttons go below it. */
+  html.side-panel #gridModalFooterMsgs { flex-basis: 100%; }
+  html.side-panel #gridModalFooterMsgs:has(#modalMsg:empty) { display: none; }
+  html.side-panel #gridModalFooterActions { margin-left: auto; }
   /* A full-width row across the top of the footer, like the targets tab's. */
   #modalIncompleteBanner {
     display: none; align-items: center; justify-content: center; gap: 6px;
@@ -490,6 +523,7 @@
   #settingsPanel .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
   #settingsPanel .checkbox-row label { display: inline; margin: 0; font-weight: normal; }
   #settingsPanel .checkbox-row input { width: auto; margin: 0; }
+  #settingsPanel .checkbox-row[hidden] { display: none; }
   .hint { color: var(--text-faint); font-size: 11px; margin: 2px 0 0; }
   #syncStatus:empty { display: none; }
   #syncStatus.sync-error { color: var(--danger-text); }
@@ -757,6 +791,8 @@
     <div id="headerActions">
       <button type="button" class="syncBadge" hidden></button>
       <!-- "arrow-expand" / "arrow-collapse" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0) -->
+      <!-- A window with its right-hand strip filled in: the side panel. -->
+      <button id="openPanelBtn" class="viewSwitchBtn openPanelBtn" title="Open in side panel" aria-label="Open in side panel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4M15 18H4V6H15V18Z"/></svg></button>
       <button id="gridViewBtn" class="viewSwitchBtn" title="Extended view (until closed)" aria-label="Extended view until the popup closes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10,21V19H6.41L10.91,14.5L9.5,13.09L5,17.59V14H3V21H10M14.5,10.91L19,6.41V10H21V3H14V5H17.59L13.09,9.5L14.5,10.91Z"/></svg></button>
       <!-- "cog" from Material Design Icons (@mdi/svg 7.4.47, Apache-2.0) -->
       <button id="settingsBtn" class="settingsIconBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
@@ -798,6 +834,7 @@
       </div>
       <button type="button" class="syncBadge" hidden></button>
       <button type="button" id="tableViewBtn" title="Switch to table view">☰</button>
+      <button type="button" id="openPanelBtnModal" class="viewSwitchBtn openPanelBtn" title="Open in side panel" aria-label="Open in side panel" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4H4C2.9 4 2 4.9 2 6V18C2 19.1 2.9 20 4 20H20C21.1 20 22 19.1 22 18V6C22 4.9 21.1 4 20 4M15 18H4V6H15V18Z"/></svg></button>
       <button type="button" id="closeGridBtn" class="viewSwitchBtn" title="Compact view (until closed)" aria-label="Compact view until the popup closes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5,3.09L15,7.59V4H13V11H20V9H16.41L20.91,4.5L19.5,3.09M4,13V15H7.59L3.09,19.5L4.5,20.91L9,16.41V20H11V13H4Z"/></svg></button>
       <button type="button" id="settingsBtnModal" class="settingsIconBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z"/></svg></button>
     </div>
@@ -883,6 +920,11 @@
 
       <label for="delay">Delay between actions (ms)</label>
       <input type="number" id="delay" min="0" max="10000" step="100">
+
+      <div class="checkbox-row" id="openInSidePanelRow">
+        <input type="checkbox" id="openInSidePanel">
+        <label for="openInSidePanel" title="Clicking the toolbar icon opens the side panel instead of this popup">Always open in the side panel</label>
+      </div>
 
       <div class="checkbox-row">
         <input type="checkbox" id="reloadAfterApply" checked>

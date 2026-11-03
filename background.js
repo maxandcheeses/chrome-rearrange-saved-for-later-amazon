@@ -5,6 +5,60 @@
 // where the popup can actually do something.
 
 chrome.runtime.onInstalled.addListener(() => chrome.action.disable());
+// The side panel is only ever opened per tab, from the popup's "Open in
+// side panel" button (which enables it for that tab), so keep the
+// window-wide panel off: it would otherwise follow the user to every tab.
+chrome.runtime.onInstalled.addListener(() => chrome.sidePanel.setOptions({ enabled: false }).catch(() => {}));
+
+// "Always open in the side panel" setting: with it on, the toolbar icon has
+// no popup, so clicking it fires action.onClicked, which toggles the side
+// panel for that tab: closes it if it's open, otherwise opens it the same
+// way the popup's button does (neither call awaited, so open() stays in the
+// click's user gesture — which is also why whether it's open has to be
+// known without an async lookup). The icon is only enabled on cart pages,
+// so this never fires anywhere else.
+//
+// Open panels are tracked by the port each one keeps open to this worker
+// (popup.js keepPanelPort, named "sfl-panel:<tabId>"): the port closes with
+// the panel. If this worker is stopped while idle, the ports drop and the
+// panels reconnect at once, so the set is rebuilt before any click needs it.
+const openPanels = new Set();
+chrome.runtime.onConnect.addListener((port) => {
+  const m = /^sfl-panel:(\d+)$/.exec(port.name);
+  if (!m) return;
+  const tabId = Number(m[1]);
+  openPanels.add(tabId);
+  port.onDisconnect.addListener(() => openPanels.delete(tabId));
+});
+
+// sidePanel.close() is Chrome 141+; before that, disabling the tab's panel
+// closes it (opening it again re-enables it).
+function closeSidePanel(tabId) {
+  const disable = () => chrome.sidePanel.setOptions({ tabId, enabled: false }).catch(() => {});
+  if (chrome.sidePanel.close) chrome.sidePanel.close({ tabId }).catch(disable);
+  else disable();
+}
+async function applyOpenInSidePanel() {
+  const res = await chrome.storage.local.get(SYNCED_KEYS.settings);
+  const s = res[SYNCED_KEYS.settings] || {};
+  const on = !!s.openInSidePanel && !!(chrome.sidePanel && chrome.sidePanel.open);
+  await chrome.action.setPopup({ popup: on ? '' : 'popup.html' });
+}
+
+chrome.action.onClicked.addListener((tab) => {
+  if (openPanels.has(tab.id)) {
+    closeSidePanel(tab.id);
+    return;
+  }
+  chrome.sidePanel.setOptions({ tabId: tab.id, path: `popup.html?tabId=${tab.id}`, enabled: true });
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+});
+
+chrome.runtime.onInstalled.addListener(() => { applyOpenInSidePanel(); });
+chrome.runtime.onStartup.addListener(() => { applyOpenInSidePanel(); });
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[SYNCED_KEYS.settings]) applyOpenInSidePanel();
+});
 chrome.runtime.onStartup.addListener(() => chrome.action.disable());
 
 function enableIfCartPage(tabId) {

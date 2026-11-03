@@ -6,7 +6,8 @@ const DEFAULTS = {
   defaultView: 'grid',
   titleLinksEnabled: true,
   tableView: false,
-  theme: 'auto'
+  theme: 'auto',
+  openInSidePanel: false
 };
 
 let order = []; // array of keys, top to bottom (may include manual reordering)
@@ -17,6 +18,13 @@ let savingCartKey = null; // key currently being moved from cart -> saved, if an
 let deletingKey = null; // key currently being deleted from saved-for-later, if any
 let addingToCartKey = null; // key currently being added to the cart, if any
 let activeTabId = null;
+// Set when this page is running in Chrome's side panel rather than the
+// toolbar popup. The panel is opened for one tab ("Open in side panel"),
+// which passes that tab's id as ?tabId=, and stays bound to it.
+const panelTabId = Number(new URLSearchParams(location.search).get('tabId')) || null;
+const isPanel = !!panelTabId;
+if (isPanel) document.documentElement.classList.add('side-panel');
+let applyFinishedAt = 0; // when the last apply finished (see watchPanelTab)
 let statusPollHandle = null;
 let watchHandle = null;
 let applyInProgress = false;
@@ -123,6 +131,7 @@ function sendToTab(tabId, message) {
 }
 
 async function getActiveTab() {
+  if (isPanel) return chrome.tabs.get(panelTabId).catch(() => null);
   const [tab] = await new Promise((resolve) =>
     chrome.tabs.query({ active: true, currentWindow: true }, resolve)
   );
@@ -480,6 +489,9 @@ function setupTooltips() {
 }
 
 function setGridMode(on) {
+  // The side panel only has the Extended view (no Compact switch, and the
+  // Default view setting only applies to the popup).
+  if (isPanel) on = true;
   gridMode = on;
   // Each view gets fitted afresh (fitBodyToPopup): a cap measured for the
   // other view, or mid-resize, would otherwise stay and add a scrollbar.
@@ -498,6 +510,7 @@ function setGridMode(on) {
 // setGridMode clears these caps, so they're only ever for the current view.
 let fitBodyTimer = null;
 function fitBodyToPopup() {
+  if (isPanel) return; // the side panel has no cap; html.side-panel fills it
   clearTimeout(fitBodyTimer);
   fitBodyTimer = setTimeout(() => {
     const body = document.body;
@@ -1469,6 +1482,19 @@ function openPriceRuleDialog(key, rid = null) {
   notifyBox.type = 'checkbox';
   notifyBox.checked = !(rule && rule.muted);
   notifyRow.append(notifyBox, 'Notify me in this popup when the price is in range');
+  // "Don't show again" (muted) is for the target as it was: changing its
+  // range or label turns notifications back on. Ticked live, so it's
+  // visible and can still be unticked before saving; once the box itself
+  // is clicked, it's left alone. Saving with no changes stays muted.
+  if (rule && rule.muted) {
+    let notifyTouched = false;
+    notifyBox.addEventListener('change', () => { notifyTouched = true; });
+    const bound = (input) => (input.value.trim() === '' ? null : Number(input.value));
+    const edited = () => bound(minInput) !== rule.min || bound(maxInput) !== rule.max || select.value !== rule.labelId;
+    const syncNotify = () => { if (!notifyTouched) notifyBox.checked = edited(); };
+    [minInput, maxInput].forEach((input) => input.addEventListener('input', syncNotify));
+    select.addEventListener('change', syncNotify);
+  }
 
   const note = document.createElement('p');
   note.className = 'price-rule-note';
@@ -1519,7 +1545,18 @@ function renderPriceTargets() {
     btn.classList.toggle('active', selected);
     btn.setAttribute('aria-selected', String(selected));
   });
-  document.querySelectorAll('.targetsTabBtn').forEach((btn) => { btn.textContent = `Price targets (${priceRules.size})`; });
+  // Plus a pill counting the targets in range right now (as the summary
+  // line counts them), shown only while there are any.
+  const hits = [...priceRules.keys()].filter(targetIsHit).length;
+  document.querySelectorAll('.targetsTabBtn').forEach((btn) => {
+    btn.textContent = `Price targets (${priceRules.size})`;
+    if (!hits) return;
+    const pill = document.createElement('span');
+    pill.className = 'tabHitCount';
+    pill.textContent = `${hits} in range`;
+    pill.title = `${hits} of ${priceRules.size} price target${priceRules.size === 1 ? ' is' : 's are'} in range right now`;
+    btn.appendChild(pill);
+  });
 
   // Same rows in the compact popup and the grid view.
   renderTargetSummary();
@@ -2887,7 +2924,9 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
   try {
     ping = await sendToTab(tab.id, { type: 'SFL_PING' });
   } catch (err) {
-    setMsg('Open your Amazon cart page (with "Saved for later" items) in this tab, then reopen this popup.');
+    setMsg(isPanel
+      ? 'Open your Amazon cart page (with "Saved for later" items) in this tab. This panel picks it up once it loads.'
+      : 'Open your Amazon cart page (with "Saved for later" items) in this tab, then reopen this popup.');
     setLoadAllDisabled(false);
     return;
   }
@@ -2898,7 +2937,9 @@ async function fetchItems(skipScroll, checkForInProgressApply = false, retryCoun
       setTimeout(() => fetchItems(skipScroll, checkForInProgressApply, retryCount + 1), PING_RETRY_DELAY_MS);
       return;
     }
-    setMsg('No "Saved for later" section found on this page. Scroll to it or reload, then reopen this popup.');
+    setMsg(isPanel
+      ? 'No "Saved for later" section found on this page. Scroll to it or reload the page.'
+      : 'No "Saved for later" section found on this page. Scroll to it or reload, then reopen this popup.');
     setLoadAllDisabled(false);
     return;
   }
@@ -3080,6 +3121,7 @@ function pollStatus() {
       // N/N…" text with no further update. Treat it as done.
       if (applyInProgress) {
         applyInProgress = false;
+        applyFinishedAt = Date.now();
         stopWatching();
         setStatus('Done! Page refreshed.');
         setApplyBtnSub('');
@@ -3119,6 +3161,7 @@ function pollStatus() {
       clearInterval(statusPollHandle);
     } else if (s.done) {
       applyInProgress = false;
+      applyFinishedAt = Date.now();
       stopWatching();
       setStatus(s.message);
       setApplyBtnSub('');
@@ -3150,6 +3193,7 @@ function loadSettings(onLoaded) {
     seenUpdatedAt.settings = s.updatedAt;
     $('delay').value = s.bumpDelayMs;
     $('reloadAfterApply').checked = s.reloadAfterApply;
+    $('openInSidePanel').checked = !!s.openInSidePanel;
     $('defaultView').value = s.defaultView === 'grid' ? 'grid' : 'popup';
     $('theme').value = THEMES.includes(s.theme) ? s.theme : DEFAULTS.theme;
     applyTheme($('theme').value);
@@ -3167,6 +3211,7 @@ function saveSettings() {
   const s = {
     bumpDelayMs: Number($('delay').value) || DEFAULTS.bumpDelayMs,
     reloadAfterApply: $('reloadAfterApply').checked,
+    openInSidePanel: $('openInSidePanel').checked,
     tileSize,
     defaultView: $('defaultView').value === 'grid' ? 'grid' : 'popup',
     titleLinksEnabled,
@@ -3422,10 +3467,74 @@ function setupSync() {
   });
 }
 
+// "Open in side panel": enables Chrome's side panel for this tab only and
+// opens it there, then closes the popup. sidePanel.open() has to run in the
+// click's user gesture, so neither call is awaited first. The pending order
+// is mirrored to the page already (SFL_SET_PENDING_ORDER), so the panel
+// picks up any unapplied arrangement. Hidden on Chrome versions without
+// sidePanel.open (before 116).
+function setupOpenInPanel() {
+  const supported = !!(chrome.sidePanel && chrome.sidePanel.open);
+  if (!supported) $('openInSidePanelRow').hidden = true;
+  if (isPanel || !supported) return;
+  ['openPanelBtn', 'openPanelBtnModal'].forEach((id) => {
+    const btn = $(id);
+    btn.hidden = false;
+    btn.addEventListener('click', () => {
+      if (!activeTabId) return;
+      const tabId = activeTabId;
+      chrome.sidePanel.setOptions({ tabId, path: `popup.html?tabId=${tabId}`, enabled: true });
+      chrome.sidePanel.open({ tabId }).then(
+        () => window.close(),
+        (err) => setMsg(`Couldn't open the side panel: ${err.message}`, true)
+      );
+    });
+  });
+}
+
+// The side panel outlives page loads in its tab, unlike the popup (which
+// closes on any click into the page). Starting afresh whenever the tab
+// finishes loading something new matches what reopening the popup does.
+// An apply's own reload is the exception: pollStatus already shows "Done!"
+// and rescans for it, so just rescan instead. Also rescans when the content
+// script reports a cart page (SFL_PAGE_SUPPORTED, which it retries while
+// the saved section renders) if nothing has been found yet.
+function watchPanelTab() {
+  if (!isPanel) return;
+  keepPanelPort();
+  let navigating = false;
+  chrome.tabs.onUpdated.addListener((tabId, info) => {
+    if (tabId !== panelTabId) return;
+    if (info.status === 'loading') navigating = true;
+    else if (info.status === 'complete' && navigating) {
+      navigating = false;
+      if (applyInProgress) return;
+      if (Date.now() - applyFinishedAt < 15000) loadItems();
+      else location.reload();
+    }
+  });
+  chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (!msg || msg.type !== 'SFL_PAGE_SUPPORTED' || !sender.tab || sender.tab.id !== panelTabId) return;
+    if (!watchHandle && !applyInProgress && order.length === 0) loadItems();
+  });
+}
+
+// Tells background.js this tab's side panel is open, so its toolbar icon
+// (with "Always open in the side panel" on) closes the panel instead of
+// opening it. The port closing with the panel tells it it's closed. The
+// worker drops the port when Chrome stops it while idle, so reconnect
+// (which also restarts it) to keep it informed.
+function keepPanelPort() {
+  const port = chrome.runtime.connect({ name: `sfl-panel:${panelTabId}` });
+  port.onDisconnect.addListener(() => setTimeout(keepPanelPort, 100));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  setupOpenInPanel();
+  watchPanelTab();
   setupSync();
   loadSettings((s) => {
-    if (s.defaultView === 'grid') setGridMode(true);
+    if (s.defaultView === 'grid' || isPanel) setGridMode(true);
   });
   loadLabels().then(renderList);
   loadItems(true);
@@ -3512,6 +3621,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('delay').addEventListener('change', saveSettings);
   $('reloadAfterApply').addEventListener('change', saveSettings);
   $('defaultView').addEventListener('change', saveSettings);
+  $('openInSidePanel').addEventListener('change', saveSettings);
   $('theme').addEventListener('change', saveSettings);
   $('titleLinksEnabled').addEventListener('change', saveSettings);
 });

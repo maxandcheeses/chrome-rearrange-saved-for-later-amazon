@@ -36,6 +36,33 @@ Chrome sync account. Keep any privacy wording consistent with that.
   `:root[data-theme="dark"]` (plus dark `.label-cN` variants) — use the
   tokens, not hex values, for new colors. Must be listed in the zip step
   of `.github/workflows/build.yml`.
+- Side panel — `popup.html` also runs in Chrome's side panel, opened per
+  tab by the popup's "Open in side panel" button (`setupOpenInPanel`:
+  `sidePanel.setOptions({ tabId, path: 'popup.html?tabId=N' })` then
+  `sidePanel.open`, neither awaited so `open` stays in the user gesture).
+  `?tabId=` sets `panelTabId`/`isPanel`: `getActiveTab` returns that tab,
+  `html.side-panel` makes the body fill the panel, and `fitBodyToPopup`
+  is skipped. The panel is Extended view only: `setGridMode` forces it on
+  and `#closeGridBtn` is hidden, whatever the Default view setting says.
+  The window-wide panel is disabled in `background.js` so it
+  never shows on other tabs. Unlike the popup, the panel outlives page
+  loads: `watchPanelTab` reloads the panel when its tab finishes loading,
+  except within 15s of an apply finishing (`applyFinishedAt`), where it
+  just rescans, so pollStatus's "Done!" status stays. It also rescans on
+  `SFL_PAGE_SUPPORTED` from its tab if nothing has been found yet. The
+  button is in both headers (`openPanelBtn`, `openPanelBtnModal`). The
+  `openInSidePanel` setting is applied by `background.js`
+  (`applyOpenInSidePanel`): it clears the action's popup so a click fires
+  `action.onClicked`, which toggles the panel: closes it if the tab's
+  panel is open (`openPanels`, tracked by the `sfl-panel:<tabId>` port each
+  panel keeps open via `keepPanelPort`, reconnecting whenever the worker
+  drops it), otherwise opens it the same way. The panel hides
+  the price-target alert cards (`#priceAlertsModal`), since the page's own
+  on-page alert box already shows them. The Price targets table view
+  (`#targetsListModal.table-view`) uses two-line rows in the panel, like
+  the compact `#targetsList`. The Extended view
+  footer's message (`#gridModalFooterMsgs`) takes a full row of its own in
+  the panel, with the buttons right-aligned on the row below.
 - `popup.html` / `popup.js` — the toolbar popup UI. Renders the saved-item
   list, handles drag-and-drop and numeric-position reordering, polls the
   content script for live item snapshots and apply-progress, and stores
@@ -129,7 +156,10 @@ Chrome sync account. Keep any privacy wording consistent with that.
     isn't repeated as a chip. Notifications (`renderPriceAlerts`, both
     views) are in-popup cards per in-range target, not `chrome.notifications`:
     "Dismiss" stores `dismissedPrice` (cleared on any price change), "Don't
-    show again" sets `muted` (the dialog's "Notify me" clears it).
+    show again" sets `muted`. The edit dialog's "Notify me" clears it, and
+    on a muted target it ticks itself as soon as the range or label is
+    changed (unless the box itself has been clicked), so saving an edit
+    unmutes it.
   - On-page notifications (`content.js`, "On-page price target
     notifications") — without the popup: on every cart page load, and again
     whenever more saved rows lazy-load (`watchForPriceAlerts`), the content
@@ -152,7 +182,8 @@ Chrome sync account. Keep any privacy wording consistent with that.
     `applyPriceRules`. Skipped while a reorder or delete is driving the
     page, since `scanItems` rebuilds `itemsByKey`.
   - Price targets tab (`renderPriceTargets`, called from `renderList`): one
-    row per target, shown only while a rule exists (`#tabBar` and its grid
+    row per target (the tab's name shows the total and, while any are in
+    range, a `.tabHitCount` pill counting `targetIsHit`), shown only while a rule exists (`#tabBar` and its grid
     copy `#tabBarModal`); `body.tab-targets` hides the saved-list UI.
     Clicking a row (outside its title link) opens `openPriceRuleDialog`
     for it.

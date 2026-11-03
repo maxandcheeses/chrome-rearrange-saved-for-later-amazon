@@ -3,7 +3,7 @@
   "name": "Rearrange Saved for Later - Amazon",
   "version": "1.8.0",
   "description": "Drag and drop to rearrange your Amazon Saved for Later list. Nothing is collected or shared; optional sync uses your Chrome account.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "sidePanel"],
   "background": {
     "service_worker": "background.js"
   },

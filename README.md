@@ -66,6 +66,22 @@ To run it from source instead:
 The toolbar icon is greyed out except on Amazon cart pages, where the
 extension can actually do something.
 
+### Side panel
+
+To keep the extension open next to your cart, click the side panel button
+at the top of the popup (beside Extended view). The extension then opens in
+Chrome's side panel on the right of that tab. It works the same way as the
+popup, but it doesn't close when you click on the page, and it updates when
+the page reloads or you go to another page. It's only shown on the tab you
+opened it from. It always uses the Extended view, whatever the Default
+view setting is. Price targets that are hit show in the box on the Amazon
+page rather than in the side panel. Close it with the side panel's own close button. The
+button is in both the compact and Extended views. To skip the popup
+altogether, turn on **Always open in the side panel** in Settings: clicking
+the toolbar icon then opens the side panel directly, and clicking it again
+closes it. Requires Chrome 116 or
+later.
+
 ## Labels
 
 Right-click an item to tag it with labels like "Grocery" or "Electronics".
@@ -114,22 +130,24 @@ in range — hover it to see which label it applies and the current price.
 
 When a target is hit, a **Price target hit** notification shows at the top
 of the popup: **Edit** the target, **Dismiss** it until the price changes,
-or **Don't show again** (turn it back on by editing the target and ticking
-"Notify me").
+or **Don't show again**. To turn it back on, edit the target and tick
+"Notify me". Changing the target's price range or label ticks it for you,
+since the changed target counts as a new one.
 
 You don't need to open the popup to hear about it: every time you load your
 cart page, the targets that are hit show in a **Price target hit** panel in
 the top corner of the page (top right, or top left on right-to-left pages),
 in the same order as the Price targets tab. More are added as the rest of
 your list loads. **Show in list** scrolls to an item, **Dismiss** hides it until you
-reload, and **Don't show again** stops it for good (turn it back on by
-editing the target and ticking "Notify me"). **Dismiss all** and **Don't
+reload, and **Don't show again** stops it until you edit the target (see
+above). **Dismiss all** and **Don't
 show again for all** do the same for every target in the panel.
 
 ### Price targets tab
 
 Once you have a price target, a **Price targets** tab appears next to Saved
-for later, with one row per target — including items no longer in your
+for later. Its name shows how many targets you have, plus a green
+"N in range" counter while any are in range. The tab has one row per target — including items no longer in your
 list (dimmed, with the last price seen). Each row shows the target's label,
 the item's other labels, the target, the current price, and how far off it
 is ("$4.50 above target" in red, "$1.01 under target" in green). Drag rows
