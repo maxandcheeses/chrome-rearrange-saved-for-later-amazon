@@ -36,10 +36,11 @@ Open it on your Amazon cart page, drag items into the order you want (or type a 
 FEATURES
 • Drag and drop, or type a position number to jump an item straight to that spot
 • Compact view, or an extended grid/table view for long lists
+• Open it in Chrome's side panel to keep it beside your cart while you browse, or set the toolbar icon to always open (and close) the side panel
 • Select several items (⌘/Ctrl+click, or Shift+click for a range) and drag them together
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
 • Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Rearranging while filtered still keeps your whole list in order.
-• Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. Hit targets pop up right on your cart page when you open it. A Price targets tab lists every target with how far each price is from it
+• Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. Hit targets pop up right on your cart page when you open it. A Price targets tab lists every target with how far each price is from it, and counts how many are in range
 • Right-click an item to add it to your cart while keeping it in Saved for later, open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
 • Your in-progress arrangement survives closing the popup, until you reload or leave the page
@@ -104,6 +105,12 @@ Lets the user rearrange the items in their Amazon "Saved for later" cart list an
 Saves the user's extension settings (delay between actions, default view, etc.) and the labels (and price targets) they put on items, locally in their browser. If the user turns on the optional automatic sync setting or clicks Sync now, the same settings, labels and price targets (without item thumbnails) are also stored with chrome.storage.sync in their own Chrome account so they appear on their other computers. Nothing is sent to the developer or any third party.
 ```
 
+**sidePanel**
+
+```text
+Lets the user open the extension's interface in Chrome's side panel next to their Amazon cart tab, instead of the toolbar popup, so it stays open while they look at the page. It shows the same interface as the popup, only for the tab it was opened from. No data is involved.
+```
+
 **Host permission (content script on Amazon storefront domains)**
 
 ```text
@@ -113,7 +120,7 @@ The content script runs only on Amazon cart pages to read the list of saved-for-
 **Background service worker** (not a permission, but reviewers may ask)
 
 ```text
-Greys out the toolbar icon on pages other than the Amazon cart, and, if the user turned on sync, copies their settings, labels and price targets between local storage and chrome.storage.sync.
+Greys out the toolbar icon on pages other than the Amazon cart, opens or closes the side panel when the user has chosen to have the toolbar icon open it, and, if the user turned on sync, copies their settings, labels and price targets between local storage and chrome.storage.sync.
 ```
 
 ### Remote code
