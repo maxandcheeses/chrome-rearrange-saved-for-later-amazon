@@ -130,6 +130,27 @@ Chrome sync account. Keep any privacy wording consistent with that.
     views) are in-popup cards per in-range target, not `chrome.notifications`:
     "Dismiss" stores `dismissedPrice` (cleared on any price change), "Don't
     show again" sets `muted` (the dialog's "Notify me" clears it).
+  - On-page notifications (`content.js`, "On-page price target
+    notifications") — without the popup: on every cart page load, and again
+    whenever more saved rows lazy-load (`watchForPriceAlerts`), the content
+    script reads `sfl_labels` itself and lists every in-range, unmuted
+    target in a non-blocking panel in a shadow root
+    (`#sfl-price-alert-host`), pinned to the top corner on the reading-end
+    side (`inset-inline-end` with `dir` from `pageDirection`: top right on
+    LTR pages, top left on RTL). One row per target, in the Price targets
+    tab's order (`rank`, like popup.js's `targetIds`); rows found later are
+    slotted in by `data-position`. Header shows the extension name
+    (`extensionName`, from the manifest). Only "Don't show again" (per row,
+    or "Don't show again for all" in the footer, one write for all rows)
+    persists: it sets `muted` on the stored rules (re-read first, `updatedAt` bumped,
+    writes queued in `storageWrites` so quick successive mutes don't
+    overwrite each other). Dismiss / Dismiss all, × and Escape only hide
+    rows until the next reload, and `dismissedPrice` is deliberately
+    ignored, so the panel comes back on every reload while a target is in
+    range. Rows muted or deleted elsewhere drop via `storage.onChanged`. It
+    only notifies — labels are still applied by the popup's
+    `applyPriceRules`. Skipped while a reorder or delete is driving the
+    page, since `scanItems` rebuilds `itemsByKey`.
   - Price targets tab (`renderPriceTargets`, called from `renderList`): one
     row per target, shown only while a rule exists (`#tabBar` and its grid
     copy `#tabBarModal`); `body.tab-targets` hides the saved-list UI.
@@ -292,7 +313,9 @@ Chrome sync account. Keep any privacy wording consistent with that.
   ASIN keys only; refused if the item is already in the cart. Caveat: an
   Apply that bumps such an item after a reload moves the cart line back
   to Saved for later, since a bump's "Save for later" acts on it.
-- `content.css` — minimal styling injected alongside the content script.
+- `content.css` — styling injected alongside the content script: just the
+  `.sfl-price-alert-flash` highlight on an Amazon row ("Show in list"); the
+  price target panel styles itself inside its shadow root.
 - `icons/` — extension icons at 16/32/48/128px, generated from a single
   source image via `sips`. Regenerate all four sizes together if the icon
   changes; don't hand-edit individual sizes.

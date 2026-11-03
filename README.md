@@ -117,6 +117,15 @@ of the popup: **Edit** the target, **Dismiss** it until the price changes,
 or **Don't show again** (turn it back on by editing the target and ticking
 "Notify me").
 
+You don't need to open the popup to hear about it: every time you load your
+cart page, the targets that are hit show in a **Price target hit** panel in
+the top corner of the page (top right, or top left on right-to-left pages),
+in the same order as the Price targets tab. More are added as the rest of
+your list loads. **Show in list** scrolls to an item, **Dismiss** hides it until you
+reload, and **Don't show again** stops it for good (turn it back on by
+editing the target and ticking "Notify me"). **Dismiss all** and **Don't
+show again for all** do the same for every target in the panel.
+
 ### Price targets tab
 
 Once you have a price target, a **Price targets** tab appears next to Saved
@@ -135,8 +144,10 @@ offers **Load all**, since items that simply haven't loaded also show as
 "Not on this page". The popup reopens on whichever tab you were last on,
 until the cart page is refreshed.
 
-Prices are read from the cart page, so targets are only checked while the
-popup is open on your cart — there's no price tracking in the background.
+Prices are read from the cart page, so targets are only checked while your
+cart is open — there's no price tracking in the background. The on-page
+window notifies you, but target labels are only added or removed while the
+popup is open.
 A target only works while its item is in your Saved for later list: once
 the item leaves the list (bought, moved to the cart, or deleted), its price
 isn't checked and it won't notify you, though the target stays on the Price

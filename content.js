@@ -972,6 +972,381 @@
     }
   }
 
+  // --- On-page price target notifications --------------------------------
+  //
+  // When the cart page loads, the saved rows are checked against the price
+  // targets in `sfl_labels` (see "Price targets" in popup.js) and any target
+  // that's in range — and not muted, or dismissed at this price — is shown
+  // in a panel in the page's top corner (right, or left on right-to-left pages),
+  // so the popup doesn't need to be open. It doesn't block the page.
+  // Rows that lazy-load later are checked as they appear. The panel is in a
+  // shadow root so Amazon's CSS can't reach it (nor its CSS Amazon's page).
+  //
+  // It comes back on every page load for as long as a target is in range:
+  // only "Don't show again" (`muted` on the stored rule, same as the popup's
+  // button) stops it. "Close" and "Dismiss" just hide it until the next
+  // reload, so unlike the popup's cards it ignores `dismissedPrice`.
+
+  const LABELS_STORAGE_KEY = 'sfl_labels';
+  const ALERT_RECHECK_MS = 1000;
+  const LABEL_COLORS = [
+    ['#fde8c8', '#7a4a00'], ['#d6eef0', '#0b5560'], ['#e3f1d4', '#2f5a10'], ['#f6dde4', '#8a1f3d'],
+    ['#e4e1f5', '#3f3482'], ['#fff3b8', '#6b5900'], ['#dfe8f6', '#1f4b8a'], ['#ececec', '#3b3f3f']
+  ];
+
+  // `${ruleId}@${price}` for alerts already shown on this page, so lazy-loaded
+  // rows only bring up new ones.
+  const shownAlerts = new Set();
+  let alertHost = null;
+
+  function alertKey(rid, price) {
+    return `${rid}@${price}`;
+  }
+
+  function inPriceRange(price, rule) {
+    return (rule.min === null || rule.min === undefined || price >= rule.min) &&
+      (rule.max === null || rule.max === undefined || price <= rule.max);
+  }
+
+  // Same format as popup.js's formatPriceLike: Amazon's currency symbol and
+  // decimal mark, two decimals.
+  function formatPriceLike(priceText, amount) {
+    const fixed = amount.toFixed(2);
+    const m = (priceText || '').match(/\d(?:[\d.,\s ]*\d)?/);
+    if (!m) return fixed;
+    return priceText.replace(m[0], /,\d{2}$/.test(m[0]) ? fixed.replace('.', ',') : fixed);
+  }
+
+  function formatTargetRange(rule, priceText) {
+    const fmt = (n) => formatPriceLike(priceText, n);
+    const hasMin = rule.min !== null && rule.min !== undefined;
+    const hasMax = rule.max !== null && rule.max !== undefined;
+    if (hasMin && hasMax) return rule.min === rule.max ? fmt(rule.min) : `${fmt(rule.min)}–${fmt(rule.max)}`;
+    return hasMin ? `${fmt(rule.min)} or more` : `${fmt(rule.max)} or less`;
+  }
+
+  function loadStoredLabels() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(LABELS_STORAGE_KEY, (res) => resolve(res[LABELS_STORAGE_KEY] || {}));
+    });
+  }
+
+  // In-range targets to notify about, in the Price targets tab's order
+  // (popup.js's targetIds: by `rank`, unranked last in stored order):
+  // [{ rid, rule, item, label, position }], position = place in that order.
+  async function findPriceAlerts() {
+    const saved = await loadStoredLabels();
+    const labels = new Map((saved.labels || []).map((l) => [l.id, l]));
+    const rules = Object.entries(saved.priceRules || {})
+      // Targets from before items could have several are keyed by item key.
+      .map(([rid, rule]) => [rid, rule && { ...rule, key: rule.key || rid }])
+      .filter(([, rule]) => rule && labels.has(rule.labelId) && !rule.muted)
+      .sort(([, a], [, b]) => {
+        const ra = typeof a.rank === 'number' ? a.rank : Number.MAX_SAFE_INTEGER;
+        const rb = typeof b.rank === 'number' ? b.rank : Number.MAX_SAFE_INTEGER;
+        return ra - rb;
+      });
+    if (!rules.length) return [];
+    const items = new Map(scanItems().map((item) => [item.key, item]));
+    const alerts = [];
+    rules.forEach(([rid, rule], position) => {
+      const item = items.get(rule.key);
+      if (!item || typeof item.price !== 'number' || !inPriceRange(item.price, rule)) return;
+      if (shownAlerts.has(alertKey(rid, item.price))) return;
+      alerts.push({ rid, rule, item, label: labels.get(rule.labelId), position });
+    });
+    return alerts;
+  }
+
+  // "Don't show again": sets `muted` on the stored rule, re-reading first so
+  // nothing the popup saved meanwhile is lost. Queued, so muting several
+  // targets in quick succession can't have one write overwrite another.
+  let storageWrites = Promise.resolve();
+  // Takes several ids so "Don't show again for all" is one write.
+  function muteStoredTargets(rids) {
+    storageWrites = storageWrites.then(() => writeMutes(rids)).catch(() => {});
+    return storageWrites;
+  }
+
+  async function writeMutes(rids) {
+    const saved = await loadStoredLabels();
+    const rules = rids.map((rid) => saved.priceRules && saved.priceRules[rid]).filter(Boolean);
+    if (!rules.length) return;
+    rules.forEach((rule) => { rule.muted = true; });
+    saved.updatedAt = Date.now();
+    await chrome.storage.local.set({ [LABELS_STORAGE_KEY]: saved });
+  }
+
+  function scrollToSavedItem(key) {
+    const entry = itemsByKey.get(key);
+    if (!entry || !entry.rowEl.isConnected) return;
+    entry.rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    entry.rowEl.classList.add('sfl-price-alert-flash');
+    setTimeout(() => entry.rowEl.classList.remove('sfl-price-alert-flash'), 2400);
+  }
+
+  const ALERT_STYLES = `
+    :host { all: initial; }
+    /* Top corner on the reading-end side: top right for left-to-right
+       pages, top left for right-to-left ones (dir set from the page). */
+    .dialog {
+      position: fixed; top: 16px; inset-inline-end: 16px; z-index: 2147483646;
+      font: 14px/1.4 "Amazon Ember", Arial, sans-serif; color: #0f1111;
+      background: #fff; border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, .3);
+      border: 1px solid #d5d9d9;
+      width: 400px; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #eee; }
+    header .icon {
+      flex: none; width: 28px; height: 28px; border-radius: 50%; background: #f0faf6; color: #067d62;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .brand {
+      font-size: 11px; font-weight: 700; color: #565959; letter-spacing: .02em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    h2 { margin: 0; font-size: 17px; font-weight: 700; }
+    .x {
+      border: 0; background: none; font-size: 20px; line-height: 1; color: #565959; cursor: pointer;
+      width: 28px; height: 28px; border-radius: 50%;
+    }
+    .x:hover { background: #f0f2f2; }
+    .list { overflow-y: auto; padding: 4px 16px; }
+    .alert { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eee; }
+    .alert:last-child { border-bottom: 0; }
+    .thumb { flex: none; width: 64px; height: 64px; object-fit: contain; background: #f5f5f5; border-radius: 6px; }
+    .body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .pill {
+      align-self: flex-start; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+    }
+    .title {
+      color: #007185; text-decoration: none; display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .title:hover { text-decoration: underline; color: #c7511f; }
+    .detail { color: #565959; font-size: 13px; }
+    .detail strong { color: #b12704; font-size: 15px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    button.btn {
+      font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+      border: 1px solid #d5d9d9; background: #fff; color: #0f1111;
+    }
+    button.btn:hover { background: #f7fafa; }
+    button.btn:focus-visible, .x:focus-visible, .title:focus-visible { outline: 2px solid #007185; outline-offset: 2px; }
+    footer {
+      padding: 12px 16px; border-top: 1px solid #eee; display: flex; flex-wrap: wrap;
+      align-items: center; justify-content: flex-end; gap: 8px;
+    }
+    footer .note { flex: 1 0 100%; color: #565959; font-size: 12px; }
+    footer button.btn { font-size: 13px; padding: 6px 14px; }
+    button.primary {
+      font: inherit; font-size: 13px; padding: 6px 18px; border-radius: 999px; cursor: pointer;
+      border: 1px solid #fcd200; background: #ffd814; color: #0f1111;
+    }
+    button.primary:hover { background: #f7ca00; }
+  `;
+
+  function closePriceAlerts() {
+    if (!alertHost) return;
+    document.removeEventListener('keydown', onAlertKeydown, true);
+    alertHost.remove();
+    alertHost = null;
+  }
+
+  function onAlertKeydown(e) {
+    if (e.key === 'Escape' && alertHost) {
+      closePriceAlerts();
+    }
+  }
+
+  function el(tag, props = {}, children = []) {
+    const node = document.createElement(tag);
+    Object.entries(props).forEach(([k, v]) => {
+      if (k === 'class') node.className = v;
+      else if (k === 'text') node.textContent = v;
+      else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v);
+    });
+    children.forEach((c) => c && node.appendChild(c));
+    return node;
+  }
+
+  function buildAlertRow({ rid, rule, item, label, position }) {
+    const k = alertKey(rid, item.price);
+    const row = el('div', { class: 'alert' });
+    row.dataset.alertKey = k;
+    row.dataset.position = position;
+
+    const removeRow = () => {
+      row.remove();
+      if (alertHost && !alertHost.shadowRoot.querySelector('.alert')) closePriceAlerts();
+      else updateAlertHeading();
+    };
+
+    const [bg, fg] = LABEL_COLORS[(label.color || 0) % LABEL_COLORS.length];
+    const pill = el('span', { class: 'pill', text: label.name });
+    pill.style.background = bg;
+    pill.style.color = fg;
+
+    const detail = el('div', { class: 'detail' }, [
+      document.createTextNode('Now '),
+      el('strong', { text: item.priceText || formatPriceLike(null, item.price) }),
+      document.createTextNode(` · target ${formatTargetRange(rule, item.priceText)}`)
+    ]);
+
+    const actions = el('div', { class: 'actions' }, [
+      el('button', {
+        class: 'btn', type: 'button', text: 'Show in list', title: 'Scroll to this item on the page',
+        onclick: () => scrollToSavedItem(item.key)
+      }),
+      el('button', {
+        class: 'btn', type: 'button', text: 'Dismiss', title: 'Hide until the page is reloaded',
+        onclick: removeRow
+      }),
+      el('button', {
+        class: 'btn', type: 'button', text: "Don't show again",
+        title: 'Stop notifying for this target (turn back on in the extension popup)',
+        onclick: () => { muteStoredTargets([rid]); removeRow(); }
+      })
+    ]);
+
+    const body = el('div', { class: 'body' }, [
+      pill,
+      item.url
+        ? el('a', { class: 'title', href: item.url, target: '_blank', rel: 'noopener', text: item.title })
+        : el('span', { class: 'title', text: item.title }),
+      detail,
+      actions
+    ]);
+
+    const thumb = item.image ? el('img', { class: 'thumb', src: item.image, alt: '' }) : null;
+    row.append(...[thumb, body].filter(Boolean));
+    return row;
+  }
+
+  function updateAlertHeading() {
+    if (!alertHost) return;
+    const n = alertHost.shadowRoot.querySelectorAll('.alert').length;
+    alertHost.shadowRoot.querySelector('h2').textContent = n === 1 ? 'Price target hit' : `${n} price targets hit`;
+    alertHost.shadowRoot.querySelector('.dismiss-all').textContent = n === 1 ? 'Dismiss' : 'Dismiss all';
+    alertHost.shadowRoot.querySelector('.mute-all').textContent = n === 1 ? "Don't show again" : "Don't show again for all";
+  }
+
+  function showPriceAlerts(alerts) {
+    alerts.forEach((a) => shownAlerts.add(alertKey(a.rid, a.item.price)));
+
+    // Already open: add the newly found ones to it.
+    if (alertHost) {
+      const list = alertHost.shadowRoot.querySelector('.list');
+      // Slotted into place, so the list stays in the targets tab's order.
+      alerts.forEach((a) => {
+        const next = [...list.children].find((r) => Number(r.dataset.position) > a.position);
+        list.insertBefore(buildAlertRow(a), next || null);
+      });
+      updateAlertHeading();
+      return;
+    }
+
+    alertHost = el('div', { id: 'sfl-price-alert-host' });
+    const shadow = alertHost.attachShadow({ mode: 'open' });
+    const closeBtn = el('button', { class: 'x', type: 'button', 'aria-label': 'Close', title: 'Close', text: '×', onclick: closePriceAlerts });
+    const icon = el('span', { class: 'icon', 'aria-hidden': 'true' });
+    icon.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>';
+    const dialog = el('div', { class: 'dialog', dir: pageDirection(), role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'sfl-alert-heading' }, [
+      el('header', {}, [
+        icon,
+        el('div', { class: 'titles' }, [el('span', { class: 'brand', text: extensionName() }), el('h2', { id: 'sfl-alert-heading' })]),
+        closeBtn
+      ]),
+      el('div', { class: 'list' }, alerts.map(buildAlertRow)),
+      el('footer', {}, [
+        el('span', { class: 'note', text: 'Edit your targets in the extension popup.' }),
+        el('button', {
+          class: 'btn mute-all', type: 'button',
+          title: 'Stop notifying for every target listed here (turn back on in the extension popup)',
+          onclick: () => {
+            muteStoredTargets([...alertHost.shadowRoot.querySelectorAll('.alert')].map((r) => r.dataset.alertKey.split('@')[0]));
+            closePriceAlerts();
+          }
+        }),
+        el('button', { class: 'primary dismiss-all', type: 'button', title: 'Hide all of these until the page is reloaded', onclick: closePriceAlerts })
+      ])
+    ]);
+    shadow.append(el('style', { text: ALERT_STYLES }), dialog);
+    document.documentElement.appendChild(alertHost);
+    document.addEventListener('keydown', onAlertKeydown, true);
+    updateAlertHeading();
+  }
+
+  // From the manifest, so the panel follows any rename.
+  function extensionName() {
+    try {
+      return chrome.runtime.getManifest().name;
+    } catch (e) {
+      return 'Rearrange Saved for Later - Amazon';
+    }
+  }
+
+  // 'rtl' on right-to-left storefronts/languages (e.g. Arabic on amazon.sa).
+  function pageDirection() {
+    const dir = (document.documentElement.dir || (document.body && document.body.dir) || '').toLowerCase();
+    if (dir === 'rtl' || dir === 'ltr') return dir;
+    return getComputedStyle(document.documentElement).direction === 'rtl' ? 'rtl' : 'ltr';
+  }
+
+  let alertCheckRunning = false;
+
+  async function checkPriceAlerts() {
+    // Don't scan (scanItems rebuilds itemsByKey) or interrupt while the
+    // extension is driving the page.
+    if (alertCheckRunning || status.running || deleteRunning) return;
+    alertCheckRunning = true;
+    try {
+      const alerts = await findPriceAlerts();
+      if (alerts.length) showPriceAlerts(alerts);
+    } catch (e) {
+      // Extension reloaded under the page, etc. — not worth surfacing.
+    } finally {
+      alertCheckRunning = false;
+    }
+  }
+
+  // Checks once the saved rows have rendered, then again whenever more rows
+  // lazy-load in (debounced, and only when the row count grows).
+  function watchForPriceAlerts(tries = 0) {
+    const count = looksLikeCartPage() ? getAllSavedRows().length : 0;
+    if (!count) {
+      if (tries + 1 < PAGE_SUPPORT_MAX_TRIES) setTimeout(() => watchForPriceAlerts(tries + 1), PAGE_SUPPORT_RETRY_MS);
+      return;
+    }
+    checkPriceAlerts();
+    let lastCount = count;
+    let timer = null;
+    new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const n = getAllSavedRows().length;
+        if (n > lastCount) checkPriceAlerts();
+        lastCount = n;
+      }, ALERT_RECHECK_MS);
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+
+  // Drops alerts muted or deleted elsewhere (e.g. in the popup).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !alertHost || !changes[LABELS_STORAGE_KEY]) return;
+    const rules = (changes[LABELS_STORAGE_KEY].newValue || {}).priceRules || {};
+    alertHost.shadowRoot.querySelectorAll('.alert').forEach((row) => {
+      const rule = rules[row.dataset.alertKey.split('@')[0]];
+      if (!rule || rule.muted) row.remove();
+    });
+    if (!alertHost.shadowRoot.querySelector('.alert')) closePriceAlerts();
+    else updateAlertHeading();
+  });
+
   loadSettings();
   reportPageSupport();
+  watchForPriceAlerts();
 })();

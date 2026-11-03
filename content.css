@@ -1,3 +1,8 @@
-/* Reserved for future in-page indicators. Reordering UI now lives in the
-   extension popup; content.js only scans the page and drives the
-   move-to-cart / save-for-later automation. */
+/* Most in-page UI (the price target modal) lives in a shadow root built by
+   content.js; this only styles Amazon's own rows. */
+.sfl-price-alert-flash {
+  outline: 3px solid #ffd814 !important;
+  outline-offset: 4px;
+  border-radius: 8px;
+  transition: outline-color .4s;
+}

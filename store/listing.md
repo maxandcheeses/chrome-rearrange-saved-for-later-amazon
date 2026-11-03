@@ -39,7 +39,7 @@ FEATURES
 • Select several items (⌘/Ctrl+click, or Shift+click for a range) and drag them together
 • Undo and redo (⌘Z / Ctrl+Z) while you arrange
 • Labels: right-click an item to tag it ("Grocery", "Gifts", "Electronics"…), pick a color for each label, and filter the list by label. Rearranging while filtered still keeps your whole list in order.
-• Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. A Price targets tab lists every target with how far each price is from it (checked while the popup is open on your cart)
+• Price targets: set one or more target prices per item and get a label added automatically, plus a notification, when the price drops into range. Hit targets pop up right on your cart page when you open it. A Price targets tab lists every target with how far each price is from it
 • Right-click an item to add it to your cart while keeping it in Saved for later, open its product page, see its price history on camelcamelcamel, or delete it from Saved for later
 • Load all items: scrolls Amazon's lazy-loaded list for you so nothing is missed
 • Your in-progress arrangement survives closing the popup, until you reload or leave the page
@@ -52,7 +52,7 @@ Nothing is ever collected, sold, or sent to the developer or anyone else. Everyt
 GOOD TO KNOW
 • Applying an order works by moving items to your cart and back, so it takes a few seconds per item moved. Keep the Amazon cart page open until it finishes — leaving or reloading it stops partway.
 • Items Amazon marks as unavailable can't be moved, so they're skipped and stay where they are.
-• Price targets only check prices while the popup is open on your cart, and only for items still in your Saved for later list — there's no background price tracking.
+• Price targets only check prices while your Amazon cart page is open, and only for items still in your Saved for later list — there's no background price tracking.
 • Works on Amazon storefronts in many countries. If Amazon changes its cart page, item detection may need an update.
 
 Free and open source: github.com/maxandcheeses/chrome-rearrange-saved-for-later-amazon
