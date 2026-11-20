@@ -369,6 +369,15 @@
     rows.forEach((row, idx) => {
       const asin = extractAsin(row);
       const key = asin || `idx-${idx}-${extractTitle(row)}`;
+      // While Amazon re-renders the list (e.g. just after an item is moved
+      // back into Saved for later, at the top) the same item can briefly be
+      // two row elements. List it once, at its first spot, but act on the
+      // copy that's actually showing.
+      const existing = itemsByKey.get(key);
+      if (existing) {
+        if (!existing.rowEl.getClientRects().length && row.getClientRects().length) existing.rowEl = row;
+        return;
+      }
       itemsByKey.set(key, { rowEl: row, titleText: extractTitle(row) });
       const price = extractPrice(row);
       items.push({

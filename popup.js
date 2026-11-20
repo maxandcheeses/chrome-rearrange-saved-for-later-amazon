@@ -2515,7 +2515,7 @@ async function applyPendingOrder(tabId) {
   const pending = res && res.order;
   if (Array.isArray(pending) && pending.length) {
     const liveSet = new Set(order);
-    const pendingFiltered = pending.filter((k) => liveSet.has(k));
+    const pendingFiltered = [...new Set(pending)].filter((k) => liveSet.has(k));
     const pendingSet = new Set(pendingFiltered);
     const remaining = order.filter((k) => !pendingSet.has(k));
     order = pendingFiltered.concat(remaining);
@@ -2812,7 +2812,9 @@ function setLoadAllDisabled(disabled) {
 // the page are dropped, and the relative order of items we already know
 // about — including any manual drag-reordering — is left untouched.
 function mergeItems(items) {
-  const liveKeys = items.map((i) => i.key);
+  // One entry per key, even if a scan reports an item twice (content.js
+  // already dedupes, this keeps a duplicate from ever reaching `order`).
+  const liveKeys = [...new Set(items.map((i) => i.key))];
   const liveSet = new Set(liveKeys);
   items.forEach((i) => itemsByKey.set(i.key, i));
 
