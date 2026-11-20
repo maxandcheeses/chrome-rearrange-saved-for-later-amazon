@@ -213,6 +213,15 @@ Click the ⚙ button to adjust:
   extension relies on to detect and move saved items. These items won't
   show up in the extension's list at all, can't be rearranged, and will
   stay wherever they currently sit in your real saved-for-later list.
+- **Items that are in your cart *and* Saved for later.** If Apply has to
+  move an item that's also in your cart, the extension can't tell your
+  cart copy apart from the one it just moved there, so it may save your
+  cart copy for later too. The item ends up only in Saved for later (in its
+  new spot), possibly with a higher quantity, and no longer in your cart.
+  To put it back afterwards, right-click it and choose **Add to cart
+  (keep in Saved for later)** — note that this adds a quantity of 1 and
+  the product page's default option, which may differ from what was in
+  your cart. Items that don't need to move aren't touched.
 - Rearranging works by actually moving items to your cart and back, so it
   takes a few seconds per item — the more items you rearrange, the longer
   Apply takes.

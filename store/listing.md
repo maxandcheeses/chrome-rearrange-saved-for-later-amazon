@@ -53,6 +53,7 @@ Nothing is ever collected, sold, or sent to the developer or anyone else. Everyt
 GOOD TO KNOW
 • Applying an order works by moving items to your cart and back, so it takes a few seconds per item moved. Keep the Amazon cart page open until it finishes — leaving or reloading it stops partway.
 • Items Amazon marks as unavailable can't be moved, so they're skipped and stay where they are.
+• If an item is in both your cart and Saved for later and needs to move, it may end up only in Saved for later. Right-click it and choose "Add to cart (keep in Saved for later)" to put it back in your cart (quantity 1).
 • Price targets only check prices while your Amazon cart page is open, and only for items still in your Saved for later list — there's no background price tracking.
 • Works on Amazon storefronts in many countries. If Amazon changes its cart page, item detection may need an update.
 

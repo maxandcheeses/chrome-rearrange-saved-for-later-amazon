@@ -373,6 +373,27 @@ Chrome sync account. Keep any privacy wording consistent with that.
   invisible to the extension entirely: never scanned, never shown in the
   popup, never bumped, and left wherever they sit in Amazon's real list
   when applying an order around them. Documented for users in `README.md`.
+- Known issue, not yet fixed: an item in both the cart and Saved for later.
+  Nothing in `applyOrder`/`computeBumpSequence` checks the cart first. In
+  `bumpItem`, the wait for a "Save for later" control matches *any* row
+  with the item's ASIN, so it matches the cart line that was already there
+  on its first poll (before Amazon has processed "Move to cart") and
+  clicks it. The "reappeared" check then passes at once because the
+  original saved row is still in the DOM, so the next bump can start
+  while Amazon is still processing both requests. The likely outcome
+  (based on Amazon usually merging a duplicate "Move to cart" into the
+  existing cart line; not verified on the live page): the item ends up
+  only in Saved for later, maybe with quantity 2. `saveCartItemForLater`
+  has the same instant-pass on its "appeared in Saved for later" check.
+  Planned fix: before Apply, record which bumped keys are in the cart
+  (`scanCartItems`) and their quantities. In `bumpItem`, only accept a
+  "Save for later" control from a cart row that wasn't there before the
+  click, or wait for the saved row to disappear first. After the last
+  bump, re-add those items with `addSavedItemToCart`, which keeps the
+  saved row. It adds the form's default quantity and option (no
+  quantity handling exists yet), and fails for items without an ASIN or
+  needing an option picked; report those instead of failing silently.
+  Documented for users in `README.md` and `store/listing.md`.
 - Popup CSS intentionally matches Amazon's own visual language (yellow
   primary CTA `#ffd814`, navy `#0f1111`/`#232f3e`, pill-shaped buttons,
   `#e77600` orange accents) — keep new UI consistent with that palette.
